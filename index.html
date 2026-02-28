@@ -1,0 +1,1876 @@
+<!DOCTYPE html>
+
+<html>
+
+  <head>
+
+<style>
+      body { margin: 0; overflow: hidden; font-family: 'Courier New', sans-serif; cursor: crosshair; }
+      
+      /* THE SYSTEM UI CONTAINER - Positioned Bottom Left */
+      #system-ui {
+        position: absolute; 
+        bottom: 20px; 
+        left: 20px;
+        width: 300px;
+        background: rgba(0, 10, 30, 0.85); 
+        border: 2px solid #00aaff; 
+        box-shadow: 0 0 15px #00aaff;
+        padding: 15px;
+        border-radius: 5px;
+        color: white;
+        pointer-events: none; 
+        z-index: 100;
+      }
+
+      /* TEXT STYLES */
+      h2 { margin: 0 0 5px 0; color: #00aaff; font-size: 16px; letter-spacing: 1px; }
+      .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; }
+      
+      /* BARS */
+      .bar-container {
+        width: 100%; height: 10px; background: #222; margin-bottom: 8px; border: 1px solid #444;
+      }
+      .bar-fill { height: 100%; transition: width 0.2s; }
+      
+      #hp-bar { background: #ff3333; width: 100%; }   /* Red */
+      #mana-bar { background: #00d2ff; width: 100%; } /* Light Blue */
+      #xp-bar { background: #ffaa00; width: 0%; }     /* Gold */
+
+      /* OLD CONTROLS HINT */
+      #controls-hint {
+        margin-top: 10px; font-size: 11px; color: #aaa; border-top: 1px solid #444; padding-top: 5px;
+      }
+      .active-status { color: #55ff55 !important; }
+
+     /* MINIMAP UI */
+      #minimap {
+        position: absolute; 
+        top: 20px; 
+        right: 20px;
+        width: 200px; 
+        height: 200px;
+        /* NEW: Paints the 4 biomes as a pie chart! */
+        background: conic-gradient(
+          from 90deg, 
+          #2a0f0f 0deg 90deg,   /* Volcano (Bottom Right) */
+          #150025 90deg 180deg, /* darkness (Bottom Left) */
+          #d0e6f5 180deg 270deg,/* Sky (Top Left) */
+          #3b2a1a 270deg 360deg /* Earth (Top Right) */
+        );
+        border: 2px solid #00aaff; 
+        border-radius: 50%; /* Circular */
+        box-shadow: 0 0 15px #00aaff;
+        z-index: 100;
+        overflow: hidden;
+      }
+      
+      /* Center Forest Zone Indicator */
+      #minimap::after {
+        content: ''; 
+        position: absolute;
+        top: 40%; left: 40%; 
+        width: 20%; height: 20%;
+        background: #2d4c1e; /* Solid green center */
+        border-radius: 50%;
+        box-shadow: 0 0 10px #000;
+      }
+
+      /* The Player Cursor (Yellow Arrow) */
+      #player-cursor {
+        position: absolute; 
+        width: 0; height: 0;
+        border-left: 6px solid transparent;
+        border-right: 6px solid transparent;
+        border-bottom: 14px solid #ffffff; 
+        margin-left: -6px; margin-top: -7px; /* Centers the arrow */
+        transition: transform 0.1s; /* Smooth turning */
+        z-index: 10; /* NEW: Forces the arrow to draw ON TOP of the biomes */
+      }
+#toggle-menu-btn {
+    position: absolute;
+    bottom: 220px; /* Increased from 100px to sit safely above the stats */
+    left: 20px;
+    padding: 10px 20px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    z-index: 100000;
+}
+
+/* The Main Menu Window */
+#game-menu {
+    display: none; /* Hidden until you click MENU */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 600px;
+    height: 400px;
+    background: rgba(10, 10, 20, 0.9);
+    border: 2px solid #555;
+    color: white;
+    z-index: 999;
+    padding: 20px;
+    border-radius: 8px;
+    font-family: sans-serif;
+}
+
+/* Tab Layout */
+#menu-tabs {
+    display: flex;
+    gap: 10px;
+    border-bottom: 2px solid #555;
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+
+.menu-tab {
+    padding: 8px 16px;
+    cursor: pointer;
+    background: #333;
+    color: white;
+    border: none;
+    border-radius: 4px;
+}
+
+.inv-categories {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+    </style>
+
+<script type="importmap">
+      {
+        "imports": {
+          "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  </head>
+<div id="lobby-menu" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #111; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; font-family: Arial, sans-serif;">
+    <h1 style="color: #00aaff;">MULTIPLAYER LOBBY</h1>
+    <h3 id="server-text">Connecting to server...</h3>
+</div>
+
+  <body>
+<div id="white-out" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: white; opacity: 0; pointer-events: none; z-index: 9999;"></div>
+
+<div id="hotbar" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100;">
+        <div id="slot-1" style="width: 50px; height: 50px; background: rgba(0,0,0,0.5); border: 2px solid #555; color: gray; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 5px;">1</div>
+    </div>
+    <div id="system-ui">
+      <div class="stat-row">
+        <h2>STATUS</h2>
+        <span>LVL <span id="level-val">1</span></span>
+      </div>
+      
+      <div style="font-size: 12px; margin-top: 5px;">HP <span id="hp-text" style="float:right;">100/100</span></div>
+      <div class="bar-container">
+        <div id="hp-bar" class="bar-fill"></div>
+      </div>
+
+      <div style="font-size: 12px;">MANA <span id="mana-text" style="float:right;">100/100</span></div>
+      <div class="bar-container">
+        <div id="mana-bar" class="bar-fill"></div>
+      </div>
+
+      <div style="font-size: 12px;">EXP <span id="xp-text" style="float:right;">0/80</span></div>
+      <div class="bar-container" style="margin-bottom: 0;">
+        <div id="xp-bar" class="bar-fill"></div>
+      </div>
+
+      <div id="controls-hint">
+        <span id="status" style="color:#ff5555; font-weight:bold;">Shift Lock: OFF</span><br>
+        <b>Shift</b> Lock | <b>WASD</b> Move | <b>Q</b> Dash
+      </div>
+    </div>
+
+    <div id="minimap">
+        <div id="player-cursor"></div>
+    </div>
+
+   <button id="toggle-menu-btn">MENU</button>
+
+<div id="game-menu">
+    <div id="menu-tabs">
+        <button class="menu-tab" onclick="switchTab('stats')">Stats</button>
+        <button class="menu-tab" onclick="switchTab('inventory')">Inventory</button>
+        <button class="menu-tab" onclick="switchTab('quests')">Daily Quests</button>
+    </div>
+    
+    <div id="tab-stats" class="tab-content">
+        <h2>Stats</h2>
+        <p>Stat Points: <span id="stat-points" style="color:#00aaff; font-weight:bold;">0</span></p>
+        <div class="stat-row">HP: <span id="stat-hp">100</span> <button onclick="upgradeStat('hp')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Mana: <span id="stat-mana">100</span> <button onclick="upgradeStat('mana')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Attack: <span id="stat-attack">10</span> <button onclick="upgradeStat('attack')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Speed: <span id="stat-speed">10</span> <button onclick="upgradeStat('speed')" style="cursor:pointer; color:black;">+</button></div>
+    </div>
+
+    <div id="tab-inventory" class="tab-content" style="display: none;">
+        <h2>Inventory</h2>
+        <div class="inv-categories">
+            <button>Materials</button>
+            <button>Armor</button>
+            <button>Weapons</button>
+        </div>
+        <div class="inv-items">
+            <p>Your inventory is empty.</p>
+        </div>
+    </div>
+
+    <div id="tab-quests" class="tab-content" style="display: none;">
+        <h2>Daily Quests</h2>
+        <p>Nothing here right now. Check back later!</p>
+    </div>
+</div>
+
+    <script type="module">
+    // 1. Imports ALWAYS go at the very top!
+    import * as THREE from 'three';
+    import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+
+    const socket = io();
+    window.socket = socket;
+
+    // 2. THIS IS THE MISSING PIECE! The list to hold the 3D bodies
+    const otherPlayers = {}; 
+
+   function spawnOtherPlayer(playerData) {
+        const otherPlayerGroup = new THREE.Group();
+        otherPlayerGroup.rotation.order = 'YXZ'; 
+
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xFFD700 }); 
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0000FF }); 
+        const pantsMat = new THREE.MeshStandardMaterial({ color: 0x00FF00 }); 
+
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 1), shirtMat);
+        torso.position.y = 2;
+        otherPlayerGroup.add(torso);
+
+        const head = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.6, 1, 32), skinMat);
+        head.position.y = 3.6;
+        otherPlayerGroup.add(head);
+
+        const limbGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.2, 16);
+        limbGeo.translate(0, -1.1, 0); 
+
+        const lLeg = new THREE.Mesh(limbGeo, pantsMat); lLeg.position.set(-0.4, 1.0, 0); otherPlayerGroup.add(lLeg);
+        const rLeg = new THREE.Mesh(limbGeo, pantsMat); rLeg.position.set(0.4, 1.0, 0); otherPlayerGroup.add(rLeg);
+        const lArm = new THREE.Mesh(limbGeo, skinMat); lArm.position.set(-1.0, 2.8, 0); otherPlayerGroup.add(lArm);
+        const rArm = new THREE.Mesh(limbGeo, skinMat); rArm.position.set(1.0, 2.8, 0); otherPlayerGroup.add(rArm);
+
+        otherPlayerGroup.position.set(playerData.x, playerData.y, playerData.z);
+        scene.add(otherPlayerGroup);
+        
+        otherPlayers[playerData.id] = otherPlayerGroup;
+    }
+
+    // --- ORIGINAL LOBBY MENU CODE ---
+    socket.on('server-list', (rooms) => {
+        const textBox = document.getElementById('server-text');
+        textBox.innerHTML = ""; 
+        for (const roomName in rooms) {
+            const roomData = rooms[roomName];
+            textBox.innerHTML += `<button onclick="socket.emit('join-room', '${roomName}')" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
+        }
+    });
+
+    socket.on('joined-success', (roomName) => {
+        document.getElementById('lobby-menu').style.display = 'none';
+    });
+
+    socket.on('room-full', () => {
+        alert("Sorry, that room is currently full!");
+    });
+
+    // START OF YOUR GAME LOGIC
+    let camera, scene, renderer;
+
+// PANIC KEY: Press 'P' to instantly leave the game
+document.addEventListener('keydown', (event) => {
+    if (event.code === 'KeyP') {
+        // Redirects the current tab to Google
+        window.location.replace("https://www.google.com");
+    }
+});
+     
+
+      // Movement & Looking States
+
+      let moveForward = false, moveBackward = false, moveLeft = false, moveRight = false;
+
+      let lookUp = false, lookDown = false, lookLeft = false, lookRight = false;
+
+     
+
+      // Jump & Dash Variables
+
+      let velocityY = 0;
+
+      let canJump = true;
+
+      let dashTriggered = false;
+
+      let dashCooldown = 0;
+
+     
+
+      // Avatar & Particles
+
+      let player;
+      let playerAura;
+      const particles = [];
+      let prevTime = performance.now();
+      const worldMeshes = []; // List of things we can stand on
+      const raycaster = new THREE.Raycaster(); // Collision detector
+      // Camera Rotation Variables
+      let yaw = 0;
+      let pitch = 0;
+      let previousMousePosition = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+      // Shift Lock State
+      let isShiftLocked = false;
+      // RPG Stats
+      let level = 1;
+      let currentHp = 100;
+      let maxHp = 100;
+      let currentMana = 100;
+      let maxMana = 100;
+      let currentXp = 0;
+      let maxXp = 80;
+      const statusElement = document.getElementById('status');
+      let isSprinting = false;
+// --- RPG, INVENTORY & STAT VARIABLES ---
+      let statPoints = 0;
+      let attackStat = 10;
+      let speedStat = 10;
+      let hasSwordEquipped = false;
+      let isFlying = false;
+      let levitateEffect = 0;
+      let lastSpacePress = 0;
+      let keysBuffer = {}; 
+      let inventory = []; // Real Inventory Array!
+// Tracking variables for Admin Flight combo
+        let spaceTaps = 0;
+        let lastSpaceTime = 0;
+        let isAdminFlying = false;
+        let isBoosting = false;
+
+      // --- INVENTORY SYSTEM ---
+      window.getDefaultItems = function() {
+          // Grant the default items when the game starts
+          inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false });
+          window.updateInventoryUI();
+      };
+
+      window.updateInventoryUI = function() {
+          const invContainer = document.querySelector('.inv-items');
+          if (inventory.length === 0) {
+              invContainer.innerHTML = '<p>Your inventory is empty.</p>';
+              return;
+          }
+          let html = '';
+          inventory.forEach((item, index) => {
+              html += `<div style="display:flex; justify-content:space-between; background:#222; padding:5px; border:1px solid #444; margin-bottom: 5px;">
+                  <span>${item.name}</span>
+                  <button onclick="equipItem(${index})" style="cursor:pointer; background:#00aaff; color:white; border:none; border-radius:3px;">
+                      ${item.equipped ? 'Equipped' : 'Equip'}
+                  </button>
+              </div>`;
+          });
+          invContainer.innerHTML = html;
+      };
+
+      window.equipItem = function(index) {
+          const item = inventory[index];
+          if (item.id === 'wooden_sword') {
+              item.equipped = true;
+              hasSwordEquipped = true;
+              sfx.click();
+              
+              // Update Hotbar
+              const slot = document.getElementById('slot-1');
+              slot.style.borderColor = '#00aaff';
+              slot.style.color = 'white';
+              slot.innerText = '1: Sword';
+              
+              window.updateInventoryUI(); // Refresh the button to say "Equipped"
+          }
+      };
+
+      // --- LEVELING & STATS SYSTEM ---
+      // Leveling Formula: Lvl 1->2 is 80 EXP, then scales using 1.73 * L^1.726
+      function getExpRequired(lvl) {
+          if (lvl === 1) return 80; 
+          return Math.floor(80 * (1.73 * Math.pow(lvl, 1.726)) / 1.73);
+      }
+      maxXp = getExpRequired(level);
+
+      window.gainExp = function(amount) {
+          currentXp += amount;
+          while (currentXp >= maxXp) {
+              currentXp -= maxXp;
+              level++;
+              statPoints += 3;
+              maxXp = getExpRequired(level);
+              
+              currentHp = maxHp; // Full Heal on level up
+              currentMana = maxMana;
+              
+              document.getElementById('stat-points').innerText = statPoints;
+          }
+      };
+
+      window.upgradeStat = function(stat) {
+          if (statPoints > 0) {
+              statPoints--;
+              sfx.click();
+              if (stat === 'hp') { maxHp += 10; currentHp += 10; document.getElementById('stat-hp').innerText = maxHp; }
+              if (stat === 'mana') { maxMana += 10; currentMana += 10; document.getElementById('stat-mana').innerText = maxMana; }
+              if (stat === 'attack') { attackStat += 2; document.getElementById('stat-attack').innerText = attackStat; }
+              if (stat === 'speed') { speedStat += 1; document.getElementById('stat-speed').innerText = speedStat; }
+              document.getElementById('stat-points').innerText = statPoints;
+          }
+      };
+
+      // --- DUMMY SPAWNER ---
+      window.summonDummy = function(levelsToGive) {
+          const dummyGeo = new THREE.BoxGeometry(2, 4, 2);
+          const dummyMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+          const dummyMesh = new THREE.Mesh(dummyGeo, dummyMat);
+          
+          const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(player.quaternion);
+          dummyMesh.position.copy(player.position).addScaledVector(dir, 15);
+          dummyMesh.position.y = 2;
+          scene.add(dummyMesh);
+          
+          let expReward = 0;
+          let tempLevel = level;
+          for (let i = 0; i < levelsToGive; i++) {
+              expReward += getExpRequired(tempLevel);
+              tempLevel++;
+          }
+          enemies.push({ mesh: dummyMesh, type: "dummy", hp: 1, exp: expReward, active: true });
+      };
+      let enemies = []; // Stores all active enemies
+const RENDER_RADIUS = 1500; // If you are further than this, the enemy "vanishes"
+// --- AUDIO SYSTEM (Retro Synth Sounds) ---
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+const audioCtx = new AudioContext();
+
+const sfx = {
+    click: () => playTone(600, 'sine', 0.1, 0.1),
+    step: () => playTone(120, 'square', 0.05, 0.02),
+    sprintStep: () => playTone(160, 'square', 0.05, 0.04),
+    dash: () => playTone(100, 'sawtooth', 0.2, 0.1),
+    jump: () => {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(300, audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.2);
+    }
+};
+
+function playTone(freq, type, duration, vol) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + duration);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + duration);
+}
+
+let lastStepTime = 0; // Timer for footstep sounds
+
+const biomeData = {
+    forest: {
+        center: { x: 0, z: 0 },
+        spawn: { minR: 250, maxR: 1750, startA: 0, endA: Math.PI * 2 },
+        mobs: [
+            { name: "Slime", color: 0x00ff00, size: 2, hp: 10, exp: 5 },
+            { name: "Goblin", color: 0x228b22, size: 3, hp: 25, exp: 12 },
+            { name: "Spitter", color: 0xadff2f, size: 3.5, hp: 45, exp: 25 },
+            { name: "Treant", color: 0x8b4513, size: 5, hp: 80, exp: 50 },
+            { name: "Gargoyle", color: 0x556b2f, size: 6, hp: 120, exp: 80 }
+        ],
+        boss: { name: "Forest Guardian", color: 0x003300, size: 12, hp: 1000, exp: 500 }
+    },
+    earth: {
+        center: { x: 6000 * Math.cos(Math.PI/4), z: 6000 * Math.sin(Math.PI/4) },
+        spawn: { minR: 2200, maxR: 9500, startA: 0, endA: Math.PI / 2 },
+        mobs: [
+            { name: "Mud Crab", color: 0x8b7355, size: 2.5, hp: 15, exp: 8 },
+            { name: "Rock Grunt", color: 0x696969, size: 3.5, hp: 35, exp: 18 },
+            { name: "Sandworm", color: 0xd2b48c, size: 4, hp: 60, exp: 35 },
+            { name: "Golem", color: 0x808080, size: 6, hp: 100, exp: 65 },
+            { name: "Earth Elemental", color: 0x5c4033, size: 7, hp: 150, exp: 100 }
+        ],
+        boss: { name: "Earth Titan", color: 0x3b2a1a, size: 15, hp: 1500, exp: 800 }
+    },
+    sky: {
+        center: { x: 6000 * Math.cos(3*Math.PI/4), z: 6000 * Math.sin(3*Math.PI/4) },
+        spawn: { minR: 2200, maxR: 9500, startA: Math.PI / 2, endA: Math.PI },
+        mobs: [
+            { name: "Wisp", color: 0xe0ffff, size: 2, hp: 12, exp: 6 },
+            { name: "Harpy", color: 0xadd8e6, size: 3, hp: 30, exp: 15 },
+            { name: "Gale Flyer", color: 0x87cefa, size: 4, hp: 55, exp: 30 },
+            { name: "Storm Cloud", color: 0x778899, size: 5, hp: 90, exp: 60 },
+            { name: "Wind Elemental", color: 0x4682b4, size: 6, hp: 140, exp: 90 }
+        ],
+        boss: { name: "Sky Dragon", color: 0x00008b, size: 14, hp: 1300, exp: 700 }
+    },
+    darkness: {
+        center: { x: 6000 * Math.cos(5*Math.PI/4), z: 6000 * Math.sin(5*Math.PI/4) },
+        spawn: { minR: 2200, maxR: 9500, startA: Math.PI, endA: Math.PI * 1.5 },
+        mobs: [
+            { name: "Shadow", color: 0x111111, size: 2, hp: 20, exp: 10 },
+            { name: "Skeleton", color: 0xdddddd, size: 3, hp: 45, exp: 22 },
+            { name: "Wraith", color: 0x4b0082, size: 4, hp: 75, exp: 45 },
+            { name: "Void Crawler", color: 0x2f4f4f, size: 5, hp: 120, exp: 75 },
+            { name: "Reaper", color: 0x000000, size: 6.5, hp: 180, exp: 120 }
+        ],
+        boss: { name: "Necromancer", color: 0x2a004d, size: 12, hp: 2000, exp: 1000 }
+    },
+    volcano: {
+        center: { x: 6000 * Math.cos(7*Math.PI/4), z: 6000 * Math.sin(7*Math.PI/4) },
+        spawn: { minR: 2200, maxR: 9500, startA: Math.PI * 1.5, endA: Math.PI * 2 },
+        mobs: [
+            { name: "Fire Bat", color: 0xff4500, size: 2, hp: 25, exp: 12 },
+            { name: "Magma Slime", color: 0xff8c00, size: 3, hp: 50, exp: 25 },
+            { name: "Ash Walker", color: 0xa9a9a9, size: 4, hp: 85, exp: 50 },
+            { name: "Hellhound", color: 0x8b0000, size: 5, hp: 130, exp: 85 },
+            { name: "Fire Giant", color: 0xb22222, size: 7, hp: 200, exp: 150 }
+        ],
+        boss: { name: "Demon Lord", color: 0x4a0000, size: 16, hp: 2500, exp: 1500 }
+    }
+};
+
+     function init() {
+        // 1. Setup Scene (Pushed fog back to 5000 units for the massive map)
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 0, 5000);
+
+        // 2. Setup Camera (Far clipping plane increased to 50000)
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 1, 50000);
+        camera.position.set(0, 10, 0);
+        camera.rotation.order = 'YXZ';
+
+        // 3. Lighting
+        const light = new THREE.HemisphereLight(0xffffff, 0x444444);
+        scene.add(light);
+        const dirLight = new THREE.DirectionalLight(0xffffff);
+        dirLight.position.set(0, 200, 100);
+        scene.add(dirLight);
+
+        // 5. Generate Environment
+        generateEnvironment();
+        spawnEntities();
+        window.getDefaultItems(); // Give default items at startup
+        createAvatar(); // Build the player
+
+        // 6. Mouse Look Controls (Only active when Shift Lock is ON)
+        document.addEventListener('mousemove', (e) => {
+          if (isShiftLocked || document.pointerLockElement === document.body) {
+            const deltaX = e.movementX || 0;
+            const deltaY = e.movementY || 0;
+
+            yaw -= deltaX * 0.005;  
+            pitch -= deltaY * 0.005;
+            pitch = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, pitch));
+
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+          }
+        });
+
+
+
+        // 7. Keyboard Controls
+        let isTypingCheat = false;
+        let cheatInput = "";
+
+        const onKeyDown = (event) => {
+            keysBuffer[event.code] = true;
+
+            // --- INVISIBLE DEVELOPER CHEAT: ESC + Numbers + Enter ---
+            if (event.key === 'Escape') {
+                isTypingCheat = true;
+                cheatInput = ""; 
+                console.log("Cheat mode ready... listening for numbers.");
+                return; // Stop here so it doesn't process ESC as a number
+            }
+
+            if (isTypingCheat) {
+                if (event.key === 'Enter') {
+                    if (cheatInput.length > 0) {
+                        const newLevel = parseInt(cheatInput);
+                        const levelsGained = newLevel - level;
+                        
+                        if (levelsGained > 0) {
+                            statPoints += (levelsGained * 5); 
+                        }
+                        
+                        level = newLevel;
+                        updateUI();
+                        console.log(`BAM! Level instantly set to ${level}. Open your menu to spend your points!`);
+                    }
+                    isTypingCheat = false;
+                    cheatInput = "";
+                    return; // Skip normal keys
+                } 
+                else if (/^[0-9]$/.test(event.key)) {
+                    cheatInput += event.key;
+                    return; // Skip normal keys
+                } 
+                else {
+                    isTypingCheat = false;
+                    cheatInput = "";
+                }
+            }
+
+            // Secret Command: Esc + S + [Number] to spawn a Dummy
+            if (keysBuffer['Escape'] && keysBuffer['KeyS'] && event.code.startsWith('Digit')) {
+                let levels = parseInt(event.key);
+                if (!isNaN(levels) && levels > 0) window.summonDummy(levels);
+            }
+
+            // Toggle Shift Lock with Z
+            if (event.code === 'KeyZ') {
+                if (document.pointerLockElement !== document.body) {
+                    document.body.requestPointerLock();
+                }
+                isShiftLocked = !isShiftLocked;
+                if (isShiftLocked) {
+                    statusElement.innerText = "Shift Lock: ON";
+                    statusElement.classList.add('active-status');
+                } else {
+                    statusElement.innerText = "Shift Lock: OFF";
+                    statusElement.classList.remove('active-status');
+                }
+                return;
+            }
+
+            // Movement & Actions
+            switch (event.code) {
+                case 'KeyW': moveForward = true; break;
+                case 'KeyA': moveLeft = true; break;
+                case 'KeyS': moveBackward = true; break;
+                case 'KeyD': moveRight = true; break;
+                case 'ArrowUp': lookUp = true; break;
+                case 'ArrowDown': lookDown = true; break;
+                case 'ArrowLeft': lookLeft = true; break;
+                case 'ArrowRight': lookRight = true; break;
+
+                case 'ControlLeft': 
+                case 'ControlRight': 
+                    isSprinting = !isSprinting; 
+                    break;
+
+                case 'Space':
+                    const now = performance.now();
+                    
+                    // Admin Flight Combo Tracker
+                    if (now - lastSpaceTime > 1000) spaceTaps = 0;
+                    spaceTaps++;
+                    lastSpaceTime = now;
+
+                    // Double Tap: Normal Flight Toggle
+                    if (level >= 100 && spaceTaps === 2) {
+                        isFlying = !isFlying; 
+                        if (isFlying) {
+                            levitateEffect = 0.4; 
+                            isShiftLocked = true;
+                            document.getElementById('status').innerText = "Shift Lock: ON";
+                            document.getElementById('status').classList.add('active-status');
+                            if (document.pointerLockElement !== document.body) document.body.requestPointerLock();
+                        } else {
+                            isAdminFlying = false;
+                            if (playerAura) playerAura.visible = false;
+                        }
+                    } 
+                    // Normal Jump
+                    else if (!isFlying && canJump) {
+                        sfx.jump();
+                        velocityY = 30; 
+                        canJump = false;
+                    }
+                    lastSpacePress = now;
+                    break;
+                
+                case 'Enter':
+                    // Triple Tap + Enter: ADMIN FLIGHT ACTIVATION
+                    const enterNow = performance.now();
+                    if (spaceTaps >= 3 && (enterNow - lastSpaceTime < 1500)) {
+                        isFlying = true;
+                        isAdminFlying = true;
+                        if (playerAura) playerAura.visible = true;
+                        console.log("SUPER SAIYAN ADMIN FLIGHT ACTIVATED!");
+                        spaceTaps = 0; // Reset combo
+                    }
+                    break;
+
+                case 'KeyQ':
+                    // Boost if Admin Flying
+                    if (isAdminFlying) {
+                        isBoosting = true;
+                    } 
+                    // Dash if normal
+                    else if (dashCooldown <= 0 && currentMana >= 10) {
+                        sfx.dash(); 
+                        dashTriggered = true; 
+                        currentMana -= 10; 
+                    }
+                    break;
+
+                case 'Digit1': 
+                    if (hasSwordEquipped && window.swordMesh) {
+                        window.swordMesh.visible = !window.swordMesh.visible; 
+                    }
+                    break;
+
+                case 'KeyM':
+                    const mapEl = document.getElementById('minimap');
+                    if (!mapEl.classList.contains('expanded')) {
+                        mapEl.classList.add('expanded');
+                        mapEl.style.position = 'absolute';
+                        mapEl.style.left = '50%';
+                        mapEl.style.top = '50%';
+                        mapEl.style.transform = 'translate(-50%, -50%) scale(2.5)'; 
+                        mapEl.style.transformOrigin = 'center center';
+                        mapEl.style.zIndex = '1000'; 
+                    } else {
+                        mapEl.classList.remove('expanded');
+                        mapEl.style.position = '';
+                        mapEl.style.left = '';
+                        mapEl.style.top = '';
+                        mapEl.style.transform = '';
+                        mapEl.style.transformOrigin = '';
+                        mapEl.style.zIndex = '';
+                    }
+                    break;
+            } 
+        };
+
+        const onKeyUp = (event) => {
+            keysBuffer[event.code] = false;
+            switch (event.code) {
+                case 'KeyW': moveForward = false; break;
+                case 'KeyA': moveLeft = false; break;
+                case 'KeyS': moveBackward = false; break;
+                case 'KeyD': moveRight = false; break;
+                case 'ArrowUp': lookUp = false; break;
+                case 'ArrowDown': lookDown = false; break;
+                case 'ArrowLeft': lookLeft = false; break;
+                case 'ArrowRight': lookRight = false; break;
+                case 'KeyQ': 
+                    isBoosting = false; // Stop boosting when Q is released
+                    break;
+            }
+        };
+
+        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keyup', onKeyUp);
+        
+        document.addEventListener('mousedown', (e) => {
+            if (e.button === 0 && hasSwordEquipped && window.swordMesh && window.swordMesh.visible) {
+                // Swing Animation (Rotates the whole right arm)
+                player.rArm.rotation.x -= 1;
+                if (window.socket) window.socket.emit('player-attack');
+                setTimeout(() => { player.rArm.rotation.x += 1; }, 150);
+                
+                // 1-Shot Dummy Attack
+                for (let i = enemies.length - 1; i >= 0; i--) {
+                    const enemy = enemies[i];
+                    if (enemy.active && enemy.type === "dummy") {
+                        if (player.position.distanceTo(enemy.mesh.position) < 20) {
+                            scene.remove(enemy.mesh);
+                            window.gainExp(enemy.exp); 
+                            enemies.splice(i, 1);
+                        }
+                    }
+                }
+            }
+        });
+        document.addEventListener('keyup', onKeyUp);
+
+        // 8. Renderer Setup
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+        
+        window.addEventListener('resize', onWindowResize);
+      }
+
+// --- TEXTURE GENERATOR ---
+      function createTexture(baseColor, speckColor) {
+          const canvas = document.createElement('canvas');
+          canvas.width = 256; 
+          canvas.height = 256;
+          const ctx = canvas.getContext('2d');
+                    // Fill base color
+          ctx.fillStyle = baseColor;
+          ctx.fillRect(0, 0, 256, 256);
+          
+          // Add detailed noise/specks
+          ctx.fillStyle = speckColor;
+          for(let i = 0; i < 1500; i++) {
+              ctx.fillRect(Math.random() * 256, Math.random() * 256, Math.random() * 3, Math.random() * 3);
+          }
+          
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          texture.repeat.set(2, 2);
+          return texture;
+      }
+
+function generateEnvironment() {
+        // --- TEXTURE GENERATOR HELPER ---
+        function createTexture(baseColor, speckColor) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; 
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+            
+            ctx.fillStyle = baseColor;
+            ctx.fillRect(0, 0, 256, 256);
+            
+            ctx.fillStyle = speckColor;
+            for(let i = 0; i < 1500; i++) {
+                ctx.fillRect(Math.random() * 256, Math.random() * 256, Math.random() * 3, Math.random() * 3);
+            }
+            
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(10, 10); 
+            return texture;
+        }
+
+        // --- THE OPTIMIZER OBJECT ---
+        const dummy = new THREE.Object3D();
+
+        // --- 1. BUILD MASSIVE CIRCULAR MAP (5x Scale) ---
+        const forestGeo = new THREE.CircleGeometry(2000, 64);
+        const forestMat = new THREE.MeshStandardMaterial({ map: createTexture('#2d4c1e', '#1a2e11'), roughness: 0.9 }); 
+        const forest = new THREE.Mesh(forestGeo, forestMat);
+        forest.rotation.x = -Math.PI / 2;
+        scene.add(forest);
+        worldMeshes.push(forest); 
+
+        function createWedge(baseColor, speckColor, startAngle, depth = 0) {
+            const geo = new THREE.RingGeometry(2000, 10000, 64, 1, startAngle, Math.PI / 2);
+            const mat = new THREE.MeshStandardMaterial({ map: createTexture(baseColor, speckColor), roughness: 0.9 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.rotation.x = -Math.PI / 2;
+            mesh.position.y = depth;
+            scene.add(mesh);
+            worldMeshes.push(mesh);
+        }
+
+        // --- NEW: TEMPLE SAFE ZONE CHECK ---
+        function isInsideTemple(x, z) {
+            const safeRadius = 150; 
+            for (const biomeName in biomeData) {
+                const center = biomeData[biomeName].center;
+                const dx = x - center.x;
+                const dz = z - center.z;
+                if (Math.sqrt(dx*dx + dz*dz) < safeRadius) {
+                    return true; 
+                }
+            }
+            return false; 
+        }
+
+        // --- UPDATED SPAWN PROPS ---
+        function spawnProps(minR, maxR, startAngle, count, callback) {
+            for (let i = 0; i < count; i++) {
+                const radius = minR + Math.random() * (maxR - minR);
+                const angle = startAngle + Math.random() * (Math.PI / 2); 
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                
+                if (isInsideTemple(x, z)) continue;
+                
+                callback(x, z);
+            }
+        }
+
+        createWedge('#3b2a1a', '#2a1a0c', 0);                    
+        createWedge('#d0e6f5', '#a0c6e5', Math.PI / 2);          
+        createWedge('#150025', '#0a0011', Math.PI);              
+        createWedge('#2a0f0f', '#1a0505', Math.PI * 1.5);
+
+        // --- 2. FOREST (Instanced Trees) ---
+        const woodMat = new THREE.MeshStandardMaterial({ map: createTexture('#4a3018', '#2a1a0c'), roughness: 1.0 });
+        const leafMat = new THREE.MeshStandardMaterial({ map: createTexture('#1e3f14', '#2d5c1e'), roughness: 0.8 });
+        
+        const treeCount = 2500;
+        const trunkGeo = new THREE.CylinderGeometry(2, 3, 1, 8); 
+        const leafGeo = new THREE.DodecahedronGeometry(1); 
+        
+        const iTrunks = new THREE.InstancedMesh(trunkGeo, woodMat, treeCount);
+        const iLeaves = new THREE.InstancedMesh(leafGeo, leafMat, treeCount);
+
+        let treeIndex = 0;
+        for(let i=0; i<6000; i++) {
+            if (treeIndex >= treeCount) break;
+            const x = (Math.random() - 0.5) * 3800; 
+            const z = (Math.random() - 0.5) * 3800;
+            
+            if (Math.sqrt(x*x + z*z) > 1900) continue; 
+            if (isInsideTemple(x, z)) continue;
+            
+            const h = 20 + Math.random() * 30;
+            const leafSize = 10 + Math.random() * 5;
+            
+            dummy.position.set(x, h/2, z);
+            dummy.scale.set(1, h, 1);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            iTrunks.setMatrixAt(treeIndex, dummy.matrix);
+
+            dummy.position.set(x, h, z);
+            dummy.scale.set(leafSize, leafSize, leafSize);
+            dummy.updateMatrix();
+            iLeaves.setMatrixAt(treeIndex, dummy.matrix);
+
+            treeIndex++;
+        }
+        
+        iTrunks.count = treeIndex;
+        iLeaves.count = treeIndex;
+        scene.add(iTrunks, iLeaves); 
+        worldMeshes.push(iTrunks); 
+
+        // --- 3. VOLCANO (Instanced Volcanoes & Spilling Lava Rivers) ---
+        const volcanoMat = new THREE.MeshStandardMaterial({ map: createTexture('#221111', '#110000'), roughness: 0.9 });
+        const lavaMat = new THREE.MeshBasicMaterial({ color: 0xff4400 }); // Glowing neon orange
+        
+        const volcanoCount = 200; 
+        const vGeo = new THREE.CylinderGeometry(15, 60, 100, 8); 
+        const lavaGeo = new THREE.CircleGeometry(14, 8); 
+        
+        // This cylinder acts as a river: thin at the top (2), wide at the bottom (6)
+        const spillGeo = new THREE.CylinderGeometry(2, 6, 1, 8); 
+        
+        const iVolcanoes = new THREE.InstancedMesh(vGeo, volcanoMat, volcanoCount);
+        const iLavaTops = new THREE.InstancedMesh(lavaGeo, lavaMat, volcanoCount);
+        const iLavaSpills = new THREE.InstancedMesh(spillGeo, lavaMat, volcanoCount * 3); 
+        
+        window.volcanoData = []; 
+        
+        let vIdx = 0;
+        let spillIdx = 0;
+        
+        // FIXED: Spawning on angle 0 to match the dark red wedge!
+        spawnProps(2200, 9500, 0, volcanoCount, (x, z) => {
+            const height = 80 + Math.random() * 100; 
+            
+            // Build the rock cone
+            dummy.position.set(x, height / 2, z);
+            dummy.scale.set(1, height / 100, 1);
+            dummy.rotation.set(0, Math.random() * Math.PI, 0);
+            dummy.updateMatrix();
+            iVolcanoes.setMatrixAt(vIdx, dummy.matrix);
+            
+            // Place the flat glowing lava pool right at the peak
+            dummy.position.set(x, height + 0.5, z);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(-Math.PI / 2, 0, 0); 
+            dummy.updateMatrix();
+            iLavaTops.setMatrixAt(vIdx, dummy.matrix);
+
+            // Add 1 to 3 continuous lava rivers flowing down to the ground
+            const numSpills = 1 + Math.floor(Math.random() * 3);
+            for(let j=0; j<numSpills; j++) {
+                const theta = Math.random() * Math.PI * 2;
+                
+                // Calculate the exact slope so the lava touches the ground
+                const topRadius = 15.5; // Slightly wider than volcano so it's visible
+                const bottomRadius = 60.5;
+                const midRadius = (topRadius + bottomRadius) / 2;
+
+                const spillX = x + Math.cos(theta) * midRadius;
+                const spillZ = z + Math.sin(theta) * midRadius;
+                const spillY = height / 2; // Midpoint of the height
+
+                const topX = x + Math.cos(theta) * topRadius;
+                const topY = height;
+                const topZ = z + Math.sin(theta) * topRadius;
+
+                // Pythagoras theorem to find exact length of the lava river
+                const radiusDiff = bottomRadius - topRadius;
+                const slopeLength = Math.sqrt((height * height) + (radiusDiff * radiusDiff));
+
+                // Position the lava, angle it up the slope, and stretch it to the exact length
+                dummy.position.set(spillX, spillY, spillZ);
+                dummy.lookAt(topX, topY, topZ); 
+                dummy.rotateX(Math.PI / 2); // Align cylinder along the slope
+                dummy.scale.set(1, slopeLength, 1); 
+                
+                dummy.updateMatrix();
+                iLavaSpills.setMatrixAt(spillIdx, dummy.matrix);
+                spillIdx++;
+            }
+            
+            window.volcanoData.push({ x: x, y: height, z: z });
+            vIdx++;
+        });
+        
+        iVolcanoes.count = vIdx;
+        iLavaTops.count = vIdx;
+        iLavaSpills.count = spillIdx;
+        scene.add(iVolcanoes, iLavaTops, iLavaSpills); 
+        worldMeshes.push(iVolcanoes);
+
+        // --- 4. DARKNESS (Instanced Monoliths & Crystals) ---
+        const monolithMat = new THREE.MeshStandardMaterial({ map: createTexture('#05000a', '#222222'), roughness: 0.7 }); 
+        const monoCount = 800;
+        const iMonoliths = new THREE.InstancedMesh(new THREE.BoxGeometry(20, 1, 20), monolithMat, monoCount);
+        
+        const crystGeo = new THREE.OctahedronGeometry(1);
+        const cMat1 = new THREE.MeshStandardMaterial({ map: createTexture('#aa00ff', '#ffffff'), emissive: 0xaa00ff, emissiveIntensity: 0.5 });
+        const cMat2 = new THREE.MeshStandardMaterial({ map: createTexture('#5500aa', '#ffffff'), emissive: 0x5500aa, emissiveIntensity: 0.5 });
+        const iCryst1 = new THREE.InstancedMesh(crystGeo, cMat1, monoCount);
+        const iCryst2 = new THREE.InstancedMesh(crystGeo, cMat2, monoCount);
+
+        let monoIdx = 0, cIdx1 = 0, cIdx2 = 0;
+        
+        // FIXED: Swapped to Math.PI / 2 to match the dark purple ground!
+        spawnProps(2200, 9500, Math.PI / 2, monoCount, (x, z) => {
+            const height = 30 + Math.random() * 100; 
+            dummy.position.set(x, height/2, z);
+            dummy.scale.set(1, height, 1);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            iMonoliths.setMatrixAt(monoIdx, dummy.matrix);
+            monoIdx++;
+
+            if (Math.random() > 0.5) {
+                const size = 8 + Math.random() * 10;
+                dummy.position.set(x + (Math.random() * 30 - 15), 5, z + (Math.random() * 30 - 15));
+                dummy.scale.set(size, size, size);
+                dummy.rotation.set(Math.random(), Math.random(), 0);
+                dummy.updateMatrix();
+                
+                if (Math.random() > 0.5) {
+                    iCryst1.setMatrixAt(cIdx1, dummy.matrix);
+                    cIdx1++;
+                } else {
+                    iCryst2.setMatrixAt(cIdx2, dummy.matrix);
+                    cIdx2++;
+                }
+            }
+        });
+        
+        iMonoliths.count = monoIdx;
+        iCryst1.count = cIdx1; 
+        iCryst2.count = cIdx2;
+        scene.add(iMonoliths, iCryst1, iCryst2); 
+        worldMeshes.push(iMonoliths, iCryst1, iCryst2);
+
+        // --- 5. SKY (Instanced Floating Platforms) ---
+        const cloudMat = new THREE.MeshStandardMaterial({ map: createTexture('#ffffff', '#e0e0e0'), roughness: 1.0 });
+        const islandCount = 600;
+        const iIslands = new THREE.InstancedMesh(new THREE.CylinderGeometry(80, 30, 15, 16), cloudMat, islandCount);
+        
+        let islandIdx = 0;
+        
+        // FIXED: Swapped to Math.PI to match the sky blue ground!
+        spawnProps(2200, 9500, Math.PI, islandCount, (x, z) => {
+            dummy.position.set(x, 50 + Math.random() * 300, z);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(0, 0, 0);
+            dummy.updateMatrix();
+            iIslands.setMatrixAt(islandIdx, dummy.matrix);
+            islandIdx++;
+        });
+        
+        iIslands.count = islandIdx;
+        scene.add(iIslands); 
+        worldMeshes.push(iIslands);
+
+        // --- 6. EARTH (Instanced Giant Mud Rocks) ---
+        const mudMat = new THREE.MeshStandardMaterial({ map: createTexture('#6b4423', '#4a2f18'), roughness: 0.9 });
+        const rockCount = 800;
+        const iRocks = new THREE.InstancedMesh(new THREE.OctahedronGeometry(60), mudMat, rockCount);
+        
+        let rockIdx = 0;
+        
+        // FIXED: Spawning on angle PI * 1.5 to match the brown Earth wedge!
+        spawnProps(2200, 9500, Math.PI * 1.5, rockCount, (x, z) => {
+            dummy.position.set(x, 20, z);
+            dummy.scale.set(1, 1, 1);
+            dummy.rotation.set(Math.random(), Math.random(), 0);
+            dummy.updateMatrix();
+            iRocks.setMatrixAt(rockIdx, dummy.matrix);
+            rockIdx++;
+        });
+        
+        iRocks.count = rockIdx;
+        scene.add(iRocks); 
+        worldMeshes.push(iRocks);
+
+        // --- 7. BUILD THEMED TEMPLES (Boss Arenas) ---
+        for (const biomeName in biomeData) {
+            const biome = biomeData[biomeName];
+            const templeParts = [];
+
+            let matColor = 0x888888;
+            if (biomeName === 'Forest') matColor = 0x557755;   
+            if (biomeName === 'Volcano') matColor = 0x221111;  
+            if (biomeName === 'Darkness') matColor = 0x1a0033; 
+            if (biomeName === 'Sky') matColor = 0xeeeeee;      
+            if (biomeName === 'Earth') matColor = 0x8b5a2b;    
+
+            const foundation = new THREE.BoxGeometry(160, 10, 160);
+            foundation.translate(0, 5, 0);
+            templeParts.push(foundation);
+
+            for (let i = 0; i < 5; i++) {
+                const step = new THREE.BoxGeometry(40, 2, 10);
+                step.translate(0, i * 2 + 1, 85 + (4 - i) * 10); 
+                templeParts.push(step);
+            }
+
+            const wallThick = 10;
+            const wallH = 40;
+            
+            const backWall = new THREE.BoxGeometry(160, wallH, wallThick);
+            backWall.translate(0, 10 + wallH/2, -75);
+            templeParts.push(backWall);
+            
+            const leftWall = new THREE.BoxGeometry(wallThick, wallH, 160);
+            leftWall.translate(-75, 10 + wallH/2, 0);
+            templeParts.push(leftWall);
+            
+            const rightWall = new THREE.BoxGeometry(wallThick, wallH, 160);
+            rightWall.translate(75, 10 + wallH/2, 0);
+            templeParts.push(rightWall);
+            
+            const frontWallL = new THREE.BoxGeometry(60, wallH, wallThick);
+            frontWallL.translate(-50, 10 + wallH/2, 75);
+            templeParts.push(frontWallL);
+            
+            const frontWallR = new THREE.BoxGeometry(60, wallH, wallThick);
+            frontWallR.translate(50, 10 + wallH/2, 75);
+            templeParts.push(frontWallR);
+
+            const roof1 = new THREE.BoxGeometry(170, 5, 170);
+            roof1.translate(0, 10 + wallH + 2.5, 0);
+            templeParts.push(roof1);
+            
+            const roof2 = new THREE.BoxGeometry(150, 10, 150);
+            roof2.translate(0, 10 + wallH + 10, 0);
+            templeParts.push(roof2);
+
+            const mergedTempleGeo = BufferGeometryUtils.mergeGeometries(templeParts);
+            const templeMat = new THREE.MeshStandardMaterial({ color: matColor, roughness: 0.9 });
+            const finalTemple = new THREE.Mesh(mergedTempleGeo, templeMat);
+
+            finalTemple.position.set(biome.center.x, 0, biome.center.z);
+            finalTemple.lookAt(0, 0, 0);
+
+            scene.add(finalTemple);
+            worldMeshes.push(finalTemple); 
+        }
+// 10% chance to spawn the Ultra Volcano
+      if (Math.random() <= 0.05) {
+          hasLargeVolcano = true;
+          const giantVolcanoGeo = new THREE.ConeGeometry(500, 1000, 16);
+          const giantVolcanoMat = new THREE.MeshStandardMaterial({ color: 0x220000 });
+          const giantVolcano = new THREE.Mesh(giantVolcanoGeo, giantVolcanoMat);
+          giantVolcano.position.set(4000, 500, 4000); 
+          scene.add(giantVolcano);
+      }
+      }      function spawnEntities() {
+        for (const biomeName in biomeData) {
+            const biome = biomeData[biomeName];
+
+            // 1. Spawn the Boss INSIDE the Temple (Now a Cube!)
+            const bossGeo = new THREE.BoxGeometry(biome.boss.size, biome.boss.size, biome.boss.size);
+            const bossMat = new THREE.MeshStandardMaterial({ 
+                color: biome.boss.color, 
+                emissive: biome.boss.color, 
+                emissiveIntensity: 0.2 
+            });
+            const bossMesh = new THREE.Mesh(bossGeo, bossMat);
+            
+            // Y is set to 2 (floor height) + half the boss size so it doesn't sink into the ground
+            bossMesh.position.set(biome.center.x,10  + (biome.boss.size / 2), biome.center.z);
+            
+            // Hide by default for your optimizer
+            bossMesh.visible = false;
+            scene.add(bossMesh);
+            enemies.push({ ...biome.boss, mesh: bossMesh, type: "boss", active: false });
+
+            // 2. Spawn 30 of each normal mob in this biome
+            biome.mobs.forEach(mobData => {
+                for (let i = 0; i < 30; i++) {
+                    const radius = biome.spawn.minR + Math.random() * (biome.spawn.maxR - biome.spawn.minR);
+                    const angle = biome.spawn.startA + Math.random() * (biome.spawn.endA - biome.spawn.startA);
+                    const x = Math.cos(angle) * radius;
+                    const z = Math.sin(angle) * radius;
+
+                    const mobGeo = new THREE.BoxGeometry(mobData.size, mobData.size, mobData.size);
+                    const mobMat = new THREE.MeshStandardMaterial({ color: mobData.color });
+                    const mobMesh = new THREE.Mesh(mobGeo, mobMat);
+                    
+                    mobMesh.position.set(x, mobData.size / 2, z);
+                    
+                    // Hide them by default to save CPU!
+                    mobMesh.visible = false; 
+                    scene.add(mobMesh);
+                    
+                    enemies.push({ ...mobData, mesh: mobMesh, type: "mob", active: false });
+                }
+            });
+        }
+      }
+      function onWindowResize() {
+
+        camera.aspect = window.innerWidth / window.innerHeight;
+
+        camera.updateProjectionMatrix();
+
+        renderer.setSize(window.innerWidth, window.innerHeight);
+
+      }
+      function updateUI() {
+        // Update Text
+        document.getElementById('level-val').innerText = level;
+        document.getElementById('hp-text').innerText = Math.floor(currentHp) + "/" + maxHp;
+        document.getElementById('mana-text').innerText = Math.floor(currentMana) + "/" + maxMana;
+        document.getElementById('xp-text').innerText = Math.floor(currentXp) + "/" + maxXp;
+
+        // Update Bar Widths
+        document.getElementById('hp-bar').style.width = (currentHp / maxHp) * 100 + "%";
+        document.getElementById('mana-bar').style.width = (currentMana / maxMana) * 100 + "%";
+        document.getElementById('xp-bar').style.width = (currentXp / maxXp) * 100 + "%";
+
+        /// --- Update Minimap ---
+        const mapEl = document.getElementById('minimap');
+        
+        // Removed the 'display === block' check because the map is always on now!
+        if (player) {
+            const cursor = document.getElementById('player-cursor');
+            
+            // Calculate Position (World is 40,000 wide! Scale = 0.005)
+            const mapX = (player.position.x * 0.01) + 100;
+            const mapZ = (player.position.z * 0.01) + 100; 
+            
+            cursor.style.left = Math.max(0, Math.min(200, mapX)) + 'px';
+            cursor.style.top = Math.max(0, Math.min(200, mapZ)) + 'px';
+            
+            const angleDeg = -(yaw * 180 / Math.PI); 
+            cursor.style.transform = `rotate(${angleDeg}deg)`;
+        }
+      }
+
+let hasLargeVolcano = false;
+let whiteOutTimer = 0;
+let isWhitedOut = false;
+let eruptionCooldown = 0;
+
+   function createAvatar() {
+        player = new THREE.Group();
+        player.rotation.order = 'YXZ'; // <--- This fixes your flight turning!
+
+        // --- ADMIN AURA ---
+        const auraGeometry = new THREE.SphereGeometry(1.5, 16, 16); 
+        // A glowing, wireframe golden sphere
+        const auraMaterial = new THREE.MeshBasicMaterial({ 
+            color: 0xffd700, // Gold!
+            transparent: true, 
+            opacity: 0.5, 
+            wireframe: true 
+        });
+        playerAura = new THREE.Mesh(auraGeometry, auraMaterial);
+        playerAura.visible = false; // Hidden by default
+        player.add(playerAura);
+
+        // Materials
+        const skinMat = new THREE.MeshStandardMaterial({ color: 0xFFD700 }); // Yellow
+        const shirtMat = new THREE.MeshStandardMaterial({ color: 0x0000FF }); // Blue
+        const pantsMat = new THREE.MeshStandardMaterial({ color: 0x00FF00 }); // Green
+
+        // 1. Torso (Boxy Chest)
+        const torsoGeo = new THREE.BoxGeometry(1.5, 2, 1); 
+        const torso = new THREE.Mesh(torsoGeo, shirtMat);
+        torso.position.y = 2; 
+        player.add(torso);
+
+        // 2. Head (Round/Cylinder)
+        const headGeo = new THREE.CylinderGeometry(0.6, 0.6, 1, 32);
+        const head = new THREE.Mesh(headGeo, skinMat);
+        head.position.y = 3.6; 
+        player.add(head);
+
+        // 3. Limbs (Smooth Cylinders with correct pivot points)
+        const limbGeo = new THREE.CylinderGeometry(0.25, 0.25, 2.2, 16);
+        limbGeo.translate(0, -1.1, 0); // Pivot at top
+
+        const legGeo = new THREE.CylinderGeometry(0.3, 0.3, 2.2, 16);
+        legGeo.translate(0, -1.1, 0); // Pivot at top
+
+        // Arms
+        player.lArm = new THREE.Mesh(limbGeo, skinMat);
+        player.lArm.position.set(-1.0, 2.8, 0);
+        player.add(player.lArm);
+
+        player.rArm = new THREE.Mesh(limbGeo, skinMat);
+        player.rArm.position.set(1.0, 2.8, 0); 
+        player.add(player.rArm);
+
+        // Legs
+        player.lLeg = new THREE.Mesh(legGeo, pantsMat);
+        player.lLeg.position.set(-0.4, 1, 0); 
+        player.add(player.lLeg);
+
+        player.rLeg = new THREE.Mesh(legGeo, pantsMat);
+        player.rLeg.position.set(0.4, 1, 0); 
+        player.add(player.rLeg);
+
+        // --- WOODEN SWORD MODEL ---
+        const swordGroup = new THREE.Group();
+        const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.6), new THREE.MeshStandardMaterial({color: 0x5c4033}));
+        const blade = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.0, 0.1), new THREE.MeshStandardMaterial({color: 0xd2b48c}));
+        blade.position.y = 1.3;
+        swordGroup.add(handle, blade);
+        
+        // Moved the sword down slightly to fit the new blocky arm length
+        swordGroup.position.set(0, -1.5, 0.5); 
+        swordGroup.rotation.x = -Math.PI / 2; 
+        swordGroup.visible = false; 
+        player.rArm.add(swordGroup); 
+        window.swordMesh = swordGroup;
+
+        player.position.set(0, 10, 0);
+        scene.add(player);
+    }
+// --- ERUPTION & SCREEN SHAKE SYSTEM ---
+      const lavaParticleGeo = new THREE.BoxGeometry(3, 3, 3);
+      const lavaParticleMat = new THREE.MeshBasicMaterial({ color: 0xff5500 });
+      const activeLavaParticles = [];
+      let currentScreenShake = 0;
+
+      function triggerEruption(volcano) {
+          // Spawn 20-40 lava chunks flying up
+          const count = 20 + Math.floor(Math.random() * 20);
+          for(let i = 0; i < count; i++) {
+              const particle = new THREE.Mesh(lavaParticleGeo, lavaParticleMat);
+              particle.position.set(volcano.x, volcano.y, volcano.z);
+              
+              // Give them random upward and outward velocity
+              particle.userData.velocity = new THREE.Vector3(
+                  (Math.random() - 0.5) * 4, // X spread
+                  3 + Math.random() * 5,     // Y boom (upward force)
+                  (Math.random() - 0.5) * 4  // Z spread
+              );
+              particle.userData.life = 120; // How many frames they live
+              
+              scene.add(particle);
+              activeLavaParticles.push(particle);
+          }
+      }
+
+     function animate() {
+        requestAnimationFrame(animate);
+        updateUI(); // Keep UI updated
+
+        const time = performance.now();
+        const delta = (time - prevTime) / 1000;
+        prevTime = time;
+
+        // --- RADIUS OPTIMIZER (CULLING) ---
+        if (player) {
+            enemies.forEach(enemy => {
+                // Calculate distance from player to enemy
+                const dx = player.position.x - enemy.mesh.position.x;
+                const dz = player.position.z - enemy.mesh.position.z;
+                const distance = Math.sqrt(dx * dx + dz * dz);
+
+                // If inside radius, wake them up!
+                if (distance < RENDER_RADIUS) {
+                    enemy.mesh.visible = true;
+                    enemy.active = true;
+                    
+                    // (Later, we will put their movement/chasing code right here)
+                    if (enemy.type === "mob" || enemy.type === "boss") {
+                         enemy.mesh.rotation.y += 1 * delta; // Just spinning them slowly for now so you know they are alive
+                    }
+                } else {
+                    // If outside radius, put them to sleep!
+                    enemy.mesh.visible = false;
+                    enemy.active = false;
+                }
+            });
+        }
+
+        // Check if we are actually moving and trying to sprint
+        const isMoving = moveForward || moveBackward || moveLeft || moveRight;
+        const actualSprinting = isSprinting && isMoving && currentMana > 0;
+
+        // --- 1. Mana Regeneration & Drain ---
+        if (actualSprinting) {
+            // Drain 2 mana per second while running
+            currentMana -= 2 * delta;
+            if (currentMana < 0) currentMana = 0; 
+        } else if (currentMana < maxMana) {
+            // Only regenerate if NOT sprinting
+            currentMana += 15 * delta; 
+            if (currentMana > maxMana) currentMana = maxMana; 
+        }
+
+        // --- 2. Dash & Speed Logic ---
+        if (dashCooldown > 0) dashCooldown -= delta;
+        
+        let baseSpeed = 20.0 + (speedStat - 10); // Speed stat increases base walk speed
+        let actualSprintSpeed = 45.0 + (speedStat - 10) * 2; // Speed stat increases sprint speed
+        
+        if (actualSprinting) baseSpeed = actualSprintSpeed;
+        
+       // Flight Logic (Level 100)
+        if (isFlying && currentMana > 0) {
+            velocityY = 0; // Turn off gravity
+            baseSpeed = actualSprintSpeed * 1.5; // 1.5x FASTER than sprinting!
+            // Initial Levitation Float!
+            if (levitateEffect > 0) {
+                player.position.y += 20 * delta; // Smoothly slide up into the air
+                levitateEffect -= delta;
+            }
+            
+            // Only drain mana and spawn particles if we are actually pressing WASD
+            if (isMoving) {
+                currentMana -= 1 * delta; // Half the sprint mana cost
+                
+                // --- SPEED LINES VFX ---
+                for(let i = 0; i < 3; i++) {
+                    const pGeo = new THREE.BoxGeometry(0.1, 0.1, 8.0); // Long streaks
+                    const pMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 });
+                    const p = new THREE.Mesh(pGeo, pMat);
+                    
+                    // Spawn randomly in a wide area around the player
+                    p.position.copy(player.position);
+                    p.position.x += (Math.random() - 0.5) * 40;
+                    p.position.y += (Math.random() - 0.5) * 40;
+                    p.position.z += (Math.random() - 0.5) * 40;
+                    
+                    // Point exactly the same way the camera is looking
+                    p.quaternion.copy(camera.quaternion);
+                    
+                    scene.add(p);
+                    // Tag them as speed lines so we know to move them backwards later
+                    particles.push({ mesh: p, life: 1.0, isSpeedLine: true });
+                }
+            }
+            if (currentMana <= 0) isFlying = false; // Fall if out of mana
+        }
+
+        if (dashTriggered) {
+            baseSpeed = 600.0; 
+            dashCooldown = 1.5;
+            dashTriggered = false;
+
+            // Particles
+            for(let i=0; i<10; i++) {
+                const pGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                const pMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true });
+                const p = new THREE.Mesh(pGeo, pMat);
+                p.position.copy(player.position);
+                p.position.y += 2; 
+                p.position.x += (Math.random() - 0.5) * 2; 
+                p.position.z += (Math.random() - 0.5) * 2; 
+                scene.add(p);
+                particles.push({ mesh: p, life: 1.0 });
+            }
+        }
+        
+        // Update Particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            p.life -= delta * 2; 
+            
+            if (p.isSpeedLine) {
+                // Zoom them backward past the camera!
+                // Vector(0,0,1) in local space is "Backwards" relative to where it's pointing
+                const dir = new THREE.Vector3(0, 0, 1).applyQuaternion(p.mesh.quaternion);
+                p.mesh.position.addScaledVector(dir, 400 * delta); // 400 ZOOM speed!
+            } else {
+                // Normal dash particles
+                p.mesh.scale.multiplyScalar(0.95);
+                p.mesh.rotation.x += 0.1;
+            }
+            
+            if (p.life <= 0) {
+                scene.remove(p.mesh);
+                particles.splice(i, 1);
+            }
+        }
+
+      // --- 3. BIOME ATMOSPHERE & GRAVITY ---
+        const distFromCenter = Math.sqrt(player.position.x * player.position.x + player.position.z * player.position.z);
+        const inDarknessBiome = (player.position.x < 0 && player.position.z > 0 && distFromCenter > 2000);
+
+        // (Keeping the flight hover fix so you don't sink!)
+        if (!isFlying) {
+            velocityY -= 80.0 * delta; 
+        } else {
+            velocityY = 0; 
+        }
+        
+        if (dashTriggered) baseSpeed = 600.0; 
+        
+        if (inDarknessBiome) {
+            scene.fog.color.setHex(0x3a1654); 
+            scene.background.setHex(0x3a1654); 
+            scene.fog.near = 0;
+            scene.fog.far = 1500; 
+        } else {
+            scene.fog.color.setHex(0x87CEEB); 
+            scene.background.setHex(0x87CEEB);
+            scene.fog.near = 0;
+            scene.fog.far = 5000; 
+        }
+        // --- 4. Collision (Floor & Ocean Bottom) ---
+        const rayOrigin = player.position.clone();
+        rayOrigin.y += 5; 
+        raycaster.set(rayOrigin, new THREE.Vector3(0, -1, 0)); 
+
+        const intersects = raycaster.intersectObjects(worldMeshes);
+        let groundHeight = 0; // Solid ground everywhere by default
+
+        if (intersects.length > 0) {
+            if (intersects[0].point.y < player.position.y + 5) {
+                groundHeight = intersects[0].point.y;
+            }
+        }
+
+        player.position.y += velocityY * delta;
+
+        if (player.position.y < groundHeight + 2) { 
+            player.position.y = groundHeight + 2;
+            velocityY = 0;
+            canJump = true;
+        }
+/// --- 5. ANIMATION (Walking & Sprinting) ---
+        if (isFlying) {
+            let targetPitch = 0; // Default upright pose for hovering
+            
+            if (isMoving) {
+                // Pitch matches your camera! Subtracting 90 degrees (Math.PI/2) puts you on your stomach.
+                // Adding the camera's pitch makes you point EXACTLY up, down, or diagonal!
+                targetPitch = pitch - (Math.PI / 2);
+            }
+            
+            // Smoothly rotate (lerp) the body to the target angle (Fast, but not instant!)
+            player.rotation.x = THREE.MathUtils.lerp(player.rotation.x, targetPitch, 10 * delta);
+            
+            // Smoothly straighten out arms and legs so they don't snap instantly either
+            player.lLeg.rotation.x = THREE.MathUtils.lerp(player.lLeg.rotation.x, 0, 15 * delta);
+            player.rLeg.rotation.x = THREE.MathUtils.lerp(player.rLeg.rotation.x, 0, 15 * delta);
+            player.lArm.rotation.x = THREE.MathUtils.lerp(player.lArm.rotation.x, 0, 15 * delta);
+            player.rArm.rotation.x = THREE.MathUtils.lerp(player.rArm.rotation.x, 0, 15 * delta);       
+        } else if (actualSprinting && !dashTriggered) {
+            // NEW: Aggressive Running Animation
+            const runCycle = Math.sin(time / 40) * 1.5; // Faster cycle, wider swings
+            
+            player.lLeg.rotation.x = runCycle;
+            player.rLeg.rotation.x = -runCycle;
+            player.lArm.rotation.x = -runCycle;
+            player.rArm.rotation.x = runCycle;
+            
+            // Lean the entire body forward for a dramatic run
+            player.rotation.x = -0.2; 
+            
+        } else if (isMoving && !dashTriggered) {
+            // Normal Walking Animation
+            const walkCycle = Math.sin(time / 60) * 0.8; 
+            player.lLeg.rotation.x = walkCycle;
+            player.rLeg.rotation.x = -walkCycle;
+            player.lArm.rotation.x = -walkCycle;
+            player.rArm.rotation.x = walkCycle;
+            
+            // Stand up straight
+            player.rotation.x = 0;
+        } else {
+            // Standing Still
+            player.lLeg.rotation.x = 0; player.rLeg.rotation.x = 0;
+            player.lArm.rotation.x = 0; player.rArm.rotation.x = 0;
+            player.rotation.x = 0;
+        }
+      // --- 6. Move Player & WALL COLLISION ---
+        
+        // 1. Calculate which way the character SHOULD face based on WASD
+        let targetYaw = yaw; // Default to wherever the camera is looking
+
+        if (isMoving && !isShiftLocked) { 
+            // If pressing keys, calculate the angle relative to the camera
+            if (moveForward && !moveBackward) {
+                if (moveLeft) targetYaw = yaw + Math.PI / 4;
+                else if (moveRight) targetYaw = yaw - Math.PI / 4;
+                else targetYaw = yaw; // Straight forward
+            } else if (moveBackward && !moveForward) {
+                if (moveLeft) targetYaw = yaw + (Math.PI * 0.75);
+                else if (moveRight) targetYaw = yaw - (Math.PI * 0.75);
+                else targetYaw = yaw + Math.PI; // Straight backward
+            } else if (moveLeft) {
+                targetYaw = yaw + Math.PI / 2; // Straight left
+            } else if (moveRight) {
+                targetYaw = yaw - Math.PI / 2; // Straight right
+            }
+        }
+
+        // 2. Smoothly rotate the player to face the target yaw
+        let yawDiff = targetYaw - player.rotation.y;
+        yawDiff = Math.atan2(Math.sin(yawDiff), Math.cos(yawDiff)); // Normalizes angle
+        player.rotation.y += yawDiff * 15 * delta; // 15 is turning speed
+
+        // 3. Movement Vectors
+        const direction = new THREE.Vector3();
+        camera.getWorldDirection(direction); 
+        
+        // Only flatten the Y axis if we are WALKING. 
+        // If we are FLYING, we want to move exactly where the camera looks!
+        if (!isFlying) {
+            direction.y = 0; 
+        }
+        direction.normalize();
+
+        const right = new THREE.Vector3();
+        right.crossVectors(new THREE.Vector3(0,1,0), direction).normalize();
+
+        // Calculate dynamic speed based on flight mode
+        let currentSpeed = baseSpeed;
+
+        if (isAdminFlying) {
+            currentSpeed = baseSpeed * 3; // 3x faster for admin flight
+            
+            if (isBoosting) {
+                currentSpeed = baseSpeed * 7; // 7x faster while holding Q!
+            }
+
+            // Animate the golden aura so it swirls around you
+            if (playerAura) {
+                playerAura.rotation.y += 5 * delta;
+                playerAura.rotation.x += 3 * delta;
+            }
+        }
+
+        const moveSpeed = currentSpeed * delta;;
+
+        // NEW: Collision Checking Function
+        // Casts a short ray from the player's chest in the direction they want to move
+        function canMove(moveVector) {
+            const chestHeight = new THREE.Vector3(player.position.x, player.position.y + 2, player.position.z);
+            const moveRay = new THREE.Raycaster(chestHeight, moveVector.clone().normalize(), 0, 2.0); // 2.0 is your hitbox size
+            const hits = moveRay.intersectObjects(worldMeshes);
+            return hits.length === 0; // Returns true if nothing is blocking the way!
+        }
+
+        // Apply movement ONLY if the path is clear
+        if (moveForward && canMove(direction)) player.position.addScaledVector(direction, moveSpeed);
+        if (moveBackward && canMove(direction.clone().negate())) player.position.addScaledVector(direction, -moveSpeed);
+        if (moveLeft && canMove(right.clone().negate())) player.position.addScaledVector(right, -moveSpeed);
+        if (moveRight && canMove(right)) player.position.addScaledVector(right, moveSpeed);
+
+        // --- NEW: FOOTSTEP SOUNDS --
+        if (isMoving && canJump) { // canJump being true means the player is safely touching the floor
+            const now = performance.now();
+            const stepInterval = isSprinting ? 250 : 400; // Faster step sounds when sprinting
+            if (now - lastStepTime > stepInterval) {
+                if (isSprinting) {
+                    sfx.sprintStep();
+                } else {
+                    sfx.step();
+                }
+                lastStepTime = now;
+            }
+        }
+       // --- 7. Update Camera ---
+        if (isShiftLocked) {
+            // ROBLOX MODE: Player turns with camera, over-the-shoulder view
+            player.rotation.y = yaw; 
+            
+            camera.position.copy(player.position);
+            camera.rotation.set(pitch, yaw, 0);
+            camera.translateX(3);  // Shift right (over shoulder)
+            camera.translateY(5);  // Move up
+            camera.translateZ(10); // Move back
+        } else {
+            // FREE CAM MODE: Your original camera setup
+            camera.position.copy(player.position);
+            camera.rotation.y = yaw;
+            camera.rotation.x = pitch;
+            
+            camera.translateZ(20); 
+            camera.translateY(6);
+        }
+
+// --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
+        eruptionCooldown -= 0.016; // timer to check 1 time per second
+        if (window.volcanoData && eruptionCooldown <= 0) {
+            eruptionCooldown = 1.0; 
+
+            // 1. Roll for ULTRA ERUPTION (0.5% chance) - Only if large volcano spawned
+            if (hasLargeVolcano && Math.random() <= 0.20) {
+                const randomVolcano = window.volcanoData[Math.floor(Math.random() * window.volcanoData.length)];
+                triggerEruption(randomVolcano); // Still spawn lava!
+
+                // ULTRA Distance Check (1800 units blast radius)
+                const dx = player.position.x - randomVolcano.x;
+                const dz = player.position.z - randomVolcano.z;
+                const distance = Math.sqrt(dx*dx + dz*dz);
+                
+                if (distance < 1800) {
+                    // Scales the shake: Max shake is 36.0 if you are right on top of it!
+                    currentScreenShake = (1800 - distance) / 50; 
+                }
+
+                whiteOutTimer = 2.0 + Math.random(); // Random duration between 2 and 3 seconds
+                isWhitedOut = true;
+                
+                document.getElementById('white-out').style.transition = 'none';
+                document.getElementById('white-out').style.opacity = '1';
+            }
+            // 2. Roll for NORMAL ERUPTION (Upgraded to 5% chance)
+            else if (Math.random() <= 0.05) {
+                const randomVolcano = window.volcanoData[Math.floor(Math.random() * window.volcanoData.length)];
+                triggerEruption(randomVolcano);
+                
+                // Distance check for normal shake (800 units)
+                const dx = player.position.x - randomVolcano.x;
+                const dz = player.position.z - randomVolcano.z;
+                const distance = Math.sqrt(dx*dx + dz*dz);
+                
+                // If player is within 800 units, shake the screen! Closer = harder shake.
+                if (distance < 800) {
+                    currentScreenShake = (800 - distance) / 50; 
+                }
+            }
+        }
+
+        // 3. Update active lava particles (gravity and lifespan)
+        for (let i = activeLavaParticles.length - 1; i >= 0; i--) {
+            const p = activeLavaParticles[i];
+            p.position.add(p.userData.velocity);
+            p.userData.velocity.y -= 0.15; // Gravity pulling it back down
+            p.userData.life--;
+            
+            if (p.userData.life <= 0 || p.position.y < 0) {
+                scene.remove(p);
+                activeLavaParticles.splice(i, 1);
+            }
+        }
+
+        // 4. Apply Screen Shake to Camera
+        if (currentScreenShake > 0) {
+            camera.position.x += (Math.random() - 0.5) * currentScreenShake;
+            camera.position.y += (Math.random() - 0.5) * currentScreenShake;
+            camera.position.z += (Math.random() - 0.5) * currentScreenShake;
+            currentScreenShake *= 0.9; // Fade the shake out slowly
+            if (currentScreenShake < 0.1) currentScreenShake = 0;
+        }
+
+        // 5. Fade out the White Screen Blindness
+        if (isWhitedOut) {
+            whiteOutTimer -= 0.016;
+            if (whiteOutTimer <= 0) {
+                isWhitedOut = false;
+                document.getElementById('white-out').style.transition = 'opacity 1.5s ease-out';
+                document.getElementById('white-out').style.opacity = '0';
+            }
+        }      
+// --- MULTIPLAYER MOVEMENT SYNC ---
+        if (window.socket && player) {
+            window.socket.emit('player-moved', {
+                x: player.position.x,
+                y: player.position.y,
+                z: player.position.z,
+                ry: player.rotation.y
+            });
+        }
+
+         renderer.render(scene, camera);
+      }
+      const menuBtn = document.getElementById('toggle-menu-btn');
+      const gameMenu = document.getElementById('game-menu');
+
+      menuBtn.addEventListener('click', () => {
+          sfx.click();
+          if (gameMenu.style.display === 'none' || gameMenu.style.display === '') {
+              gameMenu.style.display = 'block';
+              menuBtn.innerText = 'BACK';
+          } else {
+              gameMenu.style.display = 'none';
+              menuBtn.innerText = 'MENU';
+          }
+      });
+
+      // Because you are using a module script, we have to attach this to 'window'
+      // so the HTML buttons can find the function when clicked!
+      window.switchTab = function(tabName) {
+          sfx.click();
+          document.getElementById('tab-stats').style.display = 'none';
+          document.getElementById('tab-inventory').style.display = 'none';
+          document.getElementById('tab-quests').style.display = 'none';
+          document.getElementById('tab-' + tabName).style.display = 'block';
+      };
+      init();
+      animate();
+
+// --- 3D MULTIPLAYER DRAWING CODE ---
+    socket.on('current-players', (players) => {
+        for (let id in players) {
+            if (id !== socket.id) { 
+                spawnOtherPlayer(players[id]);
+            }
+        }
+    });
+
+    socket.on('new-player-joined', (playerData) => {
+        spawnOtherPlayer(playerData);
+    });
+
+    socket.on('player-left', (id) => {
+        if (otherPlayers[id]) {
+            scene.remove(otherPlayers[id]); 
+            delete otherPlayers[id];        
+        }
+    });
+
+    socket.on('player-moved', (playerData) => {
+        if (otherPlayers[playerData.id]) {
+            const mesh = otherPlayers[playerData.id];
+            mesh.position.set(playerData.x, playerData.y, playerData.z);
+            if (playerData.ry !== undefined) {
+                mesh.rotation.y = playerData.ry;
+            }
+        }
+    });
+    </script>
+
+  </body>
+
+</html>
+
+
