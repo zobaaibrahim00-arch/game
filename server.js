@@ -5,16 +5,12 @@ const io = require('socket.io')(http, {
     cors: { origin: "*" }
 });
 
-// Tells the server to send your index.html to anyone who visits your link
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
 });
 
-const gameRooms = {
-    "NA-East": { players: 0, max: 4 },
-    "NA-West": { players: 0, max: 4 }
-};
-
+// Start with NO rooms! They will be created dynamically.
+const gameRooms = {}; 
 const allPlayers = {}; 
 
 console.log("Server is starting...");
@@ -22,12 +18,23 @@ console.log("Server is starting...");
 io.on('connection', (socket) => {
     console.log("A player connected! Their ID is: " + socket.id);
     
+    // Send the current list of rooms to the new player
     socket.emit('server-list', gameRooms);
+
+    // NEW: Listen for a player creating a new room
+    socket.on('create-room', (roomName) => {
+        if (!gameRooms[roomName]) {
+            // Create the room with a max of 10 players (you can change this number)
+            gameRooms[roomName] = { players: 0, max: 10 }; 
+            io.emit('server-list', gameRooms); // Update everyone's lobby screen
+        }
+    });
 
     socket.on('join-room', (roomName) => {
         let room = gameRooms[roomName];
 
-        if (room.players < room.max) {
+        // Make sure the room exists and isn't full
+        if (room && room.players < room.max) {
             room.players++; 
             socket.currentRoom = roomName; 
             
@@ -71,8 +78,14 @@ io.on('connection', (socket) => {
 
     socket.on('disconnect', () => {
         console.log("A player left! ID: " + socket.id);
-        if (socket.currentRoom) {
+        if (socket.currentRoom && gameRooms[socket.currentRoom]) {
             gameRooms[socket.currentRoom].players--;
+            
+            // NEW: If the room is empty, delete it so the lobby stays clean!
+            if (gameRooms[socket.currentRoom].players <= 0) {
+                delete gameRooms[socket.currentRoom];
+            }
+            
             io.emit('server-list', gameRooms); 
             delete allPlayers[socket.id];
             io.to(socket.currentRoom).emit('player-left', socket.id);
@@ -80,7 +93,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// Replit handles ports automatically, but 3000 is still safe to use here
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
