@@ -296,7 +296,9 @@
         textBox.innerHTML = ""; 
         for (const roomName in rooms) {
             const roomData = rooms[roomName];
-            textBox.innerHTML += `<button onclick="socket.emit('join-room', '${roomName}')" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
+            
+            // NEW: Updated the onclick to send the object!
+            textBox.innerHTML += `<button onclick="window.socket.emit('join-room', { room: '${roomName}', username: document.getElementById('player-username').value })" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
         }
     });
 
@@ -1974,6 +1976,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
