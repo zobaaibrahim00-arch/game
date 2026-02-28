@@ -300,12 +300,14 @@
         }
     });
 
-      // --- NEW: Function to create and join a custom room ---
-    window.createServer = function() {
+     window.createServer = function() {
         const roomName = document.getElementById('new-room-name').value;
+        const myUsername = document.getElementById('player-username').value; // Get the name
+        
         if (roomName.trim() !== "") {
             window.socket.emit('create-room', roomName);
-            window.socket.emit('join-room', roomName); // Automatically join the room you just made
+            // Send both the room AND the username as an object
+            window.socket.emit('join-room', { room: roomName, username: myUsername }); 
         } else {
             alert("Please enter a valid server name!");
         }
@@ -371,21 +373,15 @@
         }
     }
 
-    // Receive messages from the server
     if (window.socket) {
         window.socket.on('chat-message', (data) => {
             const msgEl = document.createElement('div');
-            // Grab the first 4 letters of their socket ID to use as a temporary username
-            const shortName = data.id.substring(0, 4); 
             
-            // Format it like Roblox: [Name]: Message
-            msgEl.innerHTML = `<span style="color: #00aaff; font-weight: bold;">[Player_${shortName}]:</span> ${data.text}`;
+            // Now we use the actual custom name!
+            msgEl.innerHTML = `<span style="color: #00aaff; font-weight: bold;">[${data.name}]:</span> ${data.text}`;
             chatMessages.appendChild(msgEl);
             
-            // Auto-scroll to the bottom so you always see the newest message
             chatMessages.scrollTop = chatMessages.scrollHeight; 
-            
-            // Wake up the chat box so players see the new message!
             resetChatTimer();
         });
     }
@@ -1978,6 +1974,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
