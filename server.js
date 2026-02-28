@@ -76,6 +76,18 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- NEW: Handle Room Chat ---
+    socket.on('chat-message', (msg) => {
+        // Check if the player is actually in a room
+        if (socket.currentRoom) {
+            // io.to() sends it to EVERYONE in that specific room, including the sender
+            io.to(socket.currentRoom).emit('chat-message', { 
+                id: socket.id, 
+                text: msg 
+            });
+        }
+    });
+
     socket.on('disconnect', () => {
         console.log("A player left! ID: " + socket.id);
         if (socket.currentRoom && gameRooms[socket.currentRoom]) {
@@ -96,3 +108,4 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
