@@ -151,10 +151,18 @@
     </script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   </head>
-<div id="lobby-menu" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: #111; color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; font-family: Arial, sans-serif;">
-    <h1 style="color: #00aaff;">MULTIPLAYER LOBBY</h1>
-    <h3 id="server-text">Connecting to server...</h3>
-</div>
+<div id="lobby-menu" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000;">
+        <h1 style="color: white; font-family: sans-serif;">Multiplayer Lobby</h1>
+        
+        <div style="margin-bottom: 30px; background: rgba(255,255,255,0.1); padding: 20px; border-radius: 10px; text-align: center;">
+            <h3 style="color: white; font-family: sans-serif; margin-top: 0;">Create a New Server</h3>
+            <input type="text" id="new-room-name" placeholder="Enter server name..." style="padding: 10px; font-size: 16px; width: 200px;">
+            <button onclick="window.createServer()" style="padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px; margin-left: 10px;">Create & Join</button>
+        </div>
+
+        <h3 style="color: white; font-family: sans-serif;">Or Join an Existing Server:</h3>
+        <div id="server-text" style="display: flex; flex-direction: column; gap: 10px;"></div>
+    </div>
 
   <body>
 <div id="white-out" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: white; opacity: 0; pointer-events: none; z-index: 9999;"></div>
@@ -279,6 +287,17 @@
             textBox.innerHTML += `<button onclick="socket.emit('join-room', '${roomName}')" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
         }
     });
+
+      // --- NEW: Function to create and join a custom room ---
+    window.createServer = function() {
+        const roomName = document.getElementById('new-room-name').value;
+        if (roomName.trim() !== "") {
+            window.socket.emit('create-room', roomName);
+            window.socket.emit('join-room', roomName); // Automatically join the room you just made
+        } else {
+            alert("Please enter a valid server name!");
+        }
+    };
 
     socket.on('joined-success', (roomName) => {
         document.getElementById('lobby-menu').style.display = 'none';
@@ -1872,5 +1891,6 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
