@@ -30,10 +30,12 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('join-room', (roomName) => {
+    // Update the join-room listener to accept an object with room and username
+    socket.on('join-room', (data) => {
+        let roomName = data.room;
+        let playerName = data.username || "Guest"; // Default to Guest if they leave it blank
         let room = gameRooms[roomName];
 
-        // Make sure the room exists and isn't full
         if (room && room.players < room.max) {
             room.players++; 
             socket.currentRoom = roomName; 
@@ -42,8 +44,10 @@ io.on('connection', (socket) => {
             socket.emit('joined-success', roomName); 
             io.emit('server-list', gameRooms); 
 
+            // Save their custom username to their player profile!
             allPlayers[socket.id] = {
                 id: socket.id,
+                username: playerName, // <--- NEW
                 room: roomName,
                 x: Math.floor(Math.random() * 10) - 5, 
                 y: 10,
@@ -59,7 +63,6 @@ io.on('connection', (socket) => {
 
             socket.emit('current-players', playersInThisRoom);
             socket.to(roomName).emit('new-player-joined', allPlayers[socket.id]);
-
         } else {
             socket.emit('room-full');
         }
@@ -76,13 +79,11 @@ io.on('connection', (socket) => {
         }
     });
 
-    // --- NEW: Handle Room Chat ---
+   // Update the chat listener to use their saved username!
     socket.on('chat-message', (msg) => {
-        // Check if the player is actually in a room
-        if (socket.currentRoom) {
-            // io.to() sends it to EVERYONE in that specific room, including the sender
+        if (socket.currentRoom && allPlayers[socket.id]) {
             io.to(socket.currentRoom).emit('chat-message', { 
-                id: socket.id, 
+                name: allPlayers[socket.id].username, // <--- Send their real name
                 text: msg 
             });
         }
@@ -108,4 +109,5 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
