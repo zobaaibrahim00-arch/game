@@ -706,11 +706,14 @@ const biomeData = {
 
 
 
-        // 7. Keyboard Controls
+      // 7. Keyboard Controls
         let isTypingCheat = false;
         let cheatInput = "";
 
         const onKeyDown = (event) => {
+            // --- NEW: If the player is typing in an input box, ignore the game controls! ---
+            if (document.activeElement.tagName === 'INPUT') return;
+
             keysBuffer[event.code] = true;
 
             // --- INVISIBLE DEVELOPER CHEAT: ESC + Numbers + Enter ---
@@ -873,6 +876,9 @@ const biomeData = {
         };
 
         const onKeyUp = (event) => {
+            // --- NEW: If the player is typing in an input box, ignore the game controls! ---
+            if (document.activeElement.tagName === 'INPUT') return;
+
             keysBuffer[event.code] = false;
             switch (event.code) {
                 case 'KeyW': moveForward = false; break;
@@ -1976,6 +1982,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
