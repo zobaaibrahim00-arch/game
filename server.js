@@ -58,13 +58,25 @@ io.on('connection', (socket) => {
             socket.emit('joined-success', roomName); 
             io.emit('server-list', gameRooms); 
 
+         // --- NEW: 4 Safe Spawn Points in the Forest Biome ---
+            // You can adjust these numbers to push them further away from the center!
+            const spawnPoints = [
+                { x: 40, z: 40 },   // Top Right
+                { x: -40, z: 40 },  // Top Left
+                { x: 40, z: -40 },  // Bottom Right
+                { x: -40, z: -40 }  // Bottom Left
+            ];
+            
+            // Pick one of the 4 locations randomly
+            const randomSpawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+
             allPlayers[socket.id] = {
                 id: socket.id,
                 username: playerName, 
                 room: roomName,
-                x: Math.floor(Math.random() * 10) - 5, 
-                y: 10,
-                z: Math.floor(Math.random() * 10) - 5
+                x: randomSpawn.x, 
+                y: 10, // Keep Y at 10 so they drop down safely onto the ground
+                z: randomSpawn.z
             };
 
             const playersInThisRoom = {};
@@ -122,6 +134,7 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
 
 
