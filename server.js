@@ -62,10 +62,10 @@ io.on('connection', (socket) => {
             // A coordinate of 1200 on X and Z puts the player roughly 1700 units 
             // away from the center boss, safely inside the 2000-radius Forest.
             const spawnPoints = [
-                { x: 1200, z: 1200 },   // Deep North-East Forest
-                { x: -1200, z: 1200 },  // Deep North-West Forest
-                { x: 1200, z: -1200 },  // Deep South-East Forest
-                { x: -1200, z: -1200 }  // Deep South-West Forest
+                { x: 600, z: 600 },   // Deep North-East Forest
+                { x: -600, z: 600 },  // Deep North-West Forest
+                { x: 600, z: -600 },  // Deep South-East Forest
+                { x: -600, z: -600 }  // Deep South-West Forest
             ];
             
             // Pick one of the 4 locations randomly
@@ -135,6 +135,7 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
 
 
