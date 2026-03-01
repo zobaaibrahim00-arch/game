@@ -944,47 +944,65 @@ const biomeData = {
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
         
-        // --- UPGRADED: Real Damage System ---
-                    for (let i = enemies.length - 1; i >= 0; i--) {
-                        const enemy = enemies[i];
-                        
-                        // Check if the enemy is active, visible, and close enough to hit (range 25)
-                        if (enemy.active && enemy.mesh.visible && player.position.distanceTo(enemy.mesh.position) < 25) {
-                                
-                            // 1. Get Base Attack Stat from UI (defaults to 0)
-                            const playerAttackStat = parseInt(document.getElementById('stat-attack').innerText) || 0;
-                            
-                            // 2. Base Weapon Damage (Wooden Sword = 10)
-                            const weaponDamage = 10; 
+        document.addEventListener('mousedown', (event) => {
+        // Make sure we are locked into the game before swinging
+        if (document.pointerLockElement !== document.body) return; 
 
-                            // 3. Calculate Total Damage
-                            const totalDamage = weaponDamage + playerAttackStat;
-                            
-                            // 4. Apply Damage!
-                            enemy.hp -= totalDamage;
-                            
-                            // 5. Update Health Bar UI or Kill them!
-                            if (enemy.hp > 0 && enemy.ui) {
-                                // Still alive! Update the red/green health bar
-                                drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
-                                enemy.ui.texture.needsUpdate = true; 
-                                
-                                // Tiny knockback effect
-                                const pushback = new THREE.Vector3().subVectors(enemy.mesh.position, player.position).normalize();
-                                enemy.mesh.position.addScaledVector(pushback, 2);
-                            } 
-                            else if (enemy.hp <= 0) {
-                                // THEY DIED!
-                                scene.remove(enemy.mesh);
-                                enemy.active = false;
-                                
-                                window.gainExp(enemy.exp); 
-                                console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
-                                
-                                enemies.splice(i, 1);
-                            }
-                        }
+        // --- UPGRADED: Bulletproof Damage System ---
+        for (let i = enemies.length - 1; i >= 0; i--) {
+            const enemy = enemies[i];
+            
+            if (enemy.active && enemy.mesh.visible) {
+                
+                // 1. Calculate 2D Distance (Ignore Height!)
+                // This way, jumping or flying doesn't make you "miss" the enemy
+                const dx = player.position.x - enemy.mesh.position.x;
+                const dz = player.position.z - enemy.mesh.position.z;
+                const flatDistance = Math.sqrt(dx * dx + dz * dz);
+                
+                // 2. Dynamic Attack Range
+                // Base range is 25, but we ADD the enemy's size so we can hit giant bosses!
+                const hitRange = 25 + (enemy.size || 0);
+
+                if (flatDistance < hitRange) {
+                    
+                    // 3. Get Base Attack Stat from UI (defaults to 0)
+                    const playerAttackStat = parseInt(document.getElementById('stat-attack').innerText) || 0;
+                    
+                    // 4. Force Weapon Damage (even if the inventory didn't equip it properly yet)
+                    const weaponDamage = 10; 
+
+                    const totalDamage = weaponDamage + playerAttackStat;
+                    
+                    // 5. Apply Damage!
+                    enemy.hp -= totalDamage;
+                    
+                    // 6. Update Health Bar UI or Kill them!
+                    if (enemy.hp > 0 && enemy.ui) {
+                        drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                        enemy.ui.texture.needsUpdate = true; 
+                        
+                        // Tiny knockback effect away from the player
+                        const pushback = new THREE.Vector3(dx, 0, dz).normalize();
+                        enemy.mesh.position.addScaledVector(pushback, 2);
+                        
+                    } else if (enemy.hp <= 0) {
+                        // THEY DIED! Remove them from the world
+                        scene.remove(enemy.mesh);
+                        enemy.active = false;
+                        
+                        window.gainExp(enemy.exp); 
+                        console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
+                        
+                        enemies.splice(i, 1);
                     }
+                    
+                    // We hit something, so stop the loop (only hit 1 enemy per swing)
+                    break; 
+                }
+            }
+        }
+    });
         document.addEventListener('keyup', onKeyUp);
 
         // 8. Renderer Setup
@@ -2235,6 +2253,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
