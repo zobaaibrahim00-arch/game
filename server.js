@@ -58,13 +58,14 @@ io.on('connection', (socket) => {
             socket.emit('joined-success', roomName); 
             io.emit('server-list', gameRooms); 
 
-         // --- NEW: 4 Safe Spawn Points in the Forest Biome ---
-            // You can adjust these numbers to push them further away from the center!
+         // --- NEW: Adjusted Spawn Points for a MASSIVE Map ---
+            // Pushing players 250 units away from the center boss, 
+            // safely in the outer edges of the Forest biome.
             const spawnPoints = [
-                { x: 40, z: 40 },   // Top Right
-                { x: -40, z: 40 },  // Top Left
-                { x: 40, z: -40 },  // Bottom Right
-                { x: -40, z: -40 }  // Bottom Left
+                { x: 250, z: 250 },   // Deep North-East Forest
+                { x: -250, z: 250 },  // Deep North-West Forest
+                { x: 250, z: -250 },  // Deep South-East Forest
+                { x: -250, z: -250 }  // Deep South-West Forest
             ];
             
             // Pick one of the 4 locations randomly
@@ -75,9 +76,9 @@ io.on('connection', (socket) => {
                 username: playerName, 
                 room: roomName,
                 x: randomSpawn.x, 
-                y: 10, // Keep Y at 10 so they drop down safely onto the ground
+                y: 50, // Dropped from higher up just in case the terrain is hilly here!
                 z: randomSpawn.z
-            };
+            };;
 
             const playersInThisRoom = {};
             for (let id in allPlayers) {
@@ -134,6 +135,7 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
 
 
