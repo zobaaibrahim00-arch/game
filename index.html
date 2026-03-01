@@ -14,7 +14,7 @@
         left: 20px;
         width: 300px;
         background: rgba(0, 10, 30, 0.85); 
-        border: 2px solid #00aaff; 
+        border: 2px solid #00aaff;  
         box-shadow: 0 0 15px #00aaff;
         padding: 15px;
         border-radius: 5px;
@@ -234,10 +234,10 @@
     <div id="tab-stats" class="tab-content">
         <h2>Stats</h2>
         <p>Stat Points: <span id="stat-points" style="color:#00aaff; font-weight:bold;">0</span></p>
-        <div class="stat-row">HP: <span id="stat-hp">100</span> <button onclick="upgradeStat('hp')" style="cursor:pointer; color:black;">+</button></div>
-        <div class="stat-row">Mana: <span id="stat-mana">100</span> <button onclick="upgradeStat('mana')" style="cursor:pointer; color:black;">+</button></div>
-        <div class="stat-row">Attack: <span id="stat-attack">10</span> <button onclick="upgradeStat('attack')" style="cursor:pointer; color:black;">+</button></div>
-        <div class="stat-row">Speed: <span id="stat-speed">10</span> <button onclick="upgradeStat('speed')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">HP: <span id="stat-hp">1</span> <button onclick="upgradeStat('hp')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Mana: <span id="stat-mana">1</span> <button onclick="upgradeStat('mana')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Attack: <span id="stat-attack">1</span> <button onclick="upgradeStat('attack')" style="cursor:pointer; color:black;">+</button></div>
+        <div class="stat-row">Speed: <span id="stat-speed">1</span> <button onclick="upgradeStat('speed')" style="cursor:pointer; color:black;">+</button></div>
     </div>
 
     <div id="tab-inventory" class="tab-content" style="display: none;">
@@ -944,26 +944,47 @@ const biomeData = {
         document.addEventListener('keydown', onKeyDown);
         document.addEventListener('keyup', onKeyUp);
         
-        document.addEventListener('mousedown', (e) => {
-            if (e.button === 0 && hasSwordEquipped && window.swordMesh && window.swordMesh.visible) {
-                // Swing Animation (Rotates the whole right arm)
-                player.rArm.rotation.x -= 1;
-                if (window.socket) window.socket.emit('player-attack');
-                setTimeout(() => { player.rArm.rotation.x += 1; }, 150);
-                
-                // 1-Shot Dummy Attack
-                for (let i = enemies.length - 1; i >= 0; i--) {
-                    const enemy = enemies[i];
-                    if (enemy.active && enemy.type === "dummy") {
-                        if (player.position.distanceTo(enemy.mesh.position) < 20) {
-                            scene.remove(enemy.mesh);
-                            window.gainExp(enemy.exp); 
-                            enemies.splice(i, 1);
+        // --- UPGRADED: Real Damage System ---
+                    for (let i = enemies.length - 1; i >= 0; i--) {
+                        const enemy = enemies[i];
+                        
+                        // Check if the enemy is active, visible, and close enough to hit (range 25)
+                        if (enemy.active && enemy.mesh.visible && player.position.distanceTo(enemy.mesh.position) < 25) {
+                                
+                            // 1. Get Base Attack Stat from UI (defaults to 0)
+                            const playerAttackStat = parseInt(document.getElementById('stat-attack').innerText) || 0;
+                            
+                            // 2. Base Weapon Damage (Wooden Sword = 10)
+                            const weaponDamage = 10; 
+
+                            // 3. Calculate Total Damage
+                            const totalDamage = weaponDamage + playerAttackStat;
+                            
+                            // 4. Apply Damage!
+                            enemy.hp -= totalDamage;
+                            
+                            // 5. Update Health Bar UI or Kill them!
+                            if (enemy.hp > 0 && enemy.ui) {
+                                // Still alive! Update the red/green health bar
+                                drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                                enemy.ui.texture.needsUpdate = true; 
+                                
+                                // Tiny knockback effect
+                                const pushback = new THREE.Vector3().subVectors(enemy.mesh.position, player.position).normalize();
+                                enemy.mesh.position.addScaledVector(pushback, 2);
+                            } 
+                            else if (enemy.hp <= 0) {
+                                // THEY DIED!
+                                scene.remove(enemy.mesh);
+                                enemy.active = false;
+                                
+                                window.gainExp(enemy.exp); 
+                                console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
+                                
+                                enemies.splice(i, 1);
+                            }
                         }
                     }
-                }
-            }
-        });
         document.addEventListener('keyup', onKeyUp);
 
         // 8. Renderer Setup
@@ -1397,8 +1418,52 @@ function generateEnvironment() {
 
         return mobGroup;
     }
+
+      // --- NEW: Floating Name Tag & HP Bar Generator ---
+    function drawHealthBar(ctx, name, currentHp, maxHp) {
+        ctx.clearRect(0, 0, 256, 128); // Clear previous frame
+        
+        // 1. Draw Name
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 24px Courier New';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = 4;
+        ctx.fillText(name, 128, 40);
+        ctx.shadowBlur = 0; 
+
+        // 2. Draw Bar Background (Black border)
+        ctx.fillStyle = 'black';
+        ctx.fillRect(28, 50, 200, 20);
+
+        // 3. Draw Current Health (Changes color!)
+        const hpPercent = Math.max(0, currentHp / maxHp);
+        ctx.fillStyle = hpPercent > 0.5 ? '#00ff00' : (hpPercent > 0.25 ? '#ffff00' : '#ff0000');
+        ctx.fillRect(30, 52, 196 * hpPercent, 16);
+
+        // 4. Draw HP Numbers
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 16px Courier New';
+        ctx.fillText(`${Math.floor(currentHp)} / ${maxHp}`, 128, 66);
+    }
+
+    function createMobUI(name, maxHp) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 256;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+
+        drawHealthBar(ctx, name, maxHp, maxHp);
+
+        const texture = new THREE.CanvasTexture(canvas);
+        const material = new THREE.SpriteMaterial({ map: texture, transparent: true }); 
+        const sprite = new THREE.Sprite(material);
+        
+        sprite.scale.set(10, 5, 1); // Make it visible in 3D
+        return { sprite, canvas, ctx, texture };
+    }
       
-      function spawnEntities() {
+     function spawnEntities() {
         for (const biomeName in biomeData) {
             const biome = biomeData[biomeName];
 
@@ -1406,6 +1471,12 @@ function generateEnvironment() {
             const bossMesh = createMobModel({ ...biome.boss, type: "boss" });
             bossMesh.position.set(biome.center.x, 0, biome.center.z);
             bossMesh.visible = false;
+            
+            // NEW: Attach the Health Bar UI to the Boss
+            const bossUI = createMobUI(biome.boss.name, biome.boss.hp);
+            bossUI.sprite.position.y = (biome.boss.size * 2) + 2; 
+            bossMesh.add(bossUI.sprite);
+            
             scene.add(bossMesh);
             
             enemies.push({ 
@@ -1413,6 +1484,9 @@ function generateEnvironment() {
                 mesh: bossMesh, 
                 type: "boss", 
                 active: true, // Switched to true so we can fight it!
+                hp: biome.boss.hp,       // Track current HP
+                maxHp: biome.boss.hp,    // Track max HP
+                ui: bossUI,              // Save UI to update it later
                 attackType: "mage",
                 speed: 0.6,
                 damage: 50,
@@ -1433,6 +1507,12 @@ function generateEnvironment() {
                     const mobMesh = createMobModel(mobData);
                     mobMesh.position.set(x, 0, z); // Set Y to 0, the model generator handles height!
                     mobMesh.visible = false; 
+                    
+                    // NEW: Attach the Health Bar UI to the Mob
+                    const mobUI = createMobUI(mobData.name, mobData.hp);
+                    mobUI.sprite.position.y = (mobData.size * 2) + 2; 
+                    mobMesh.add(mobUI.sprite);
+                    
                     scene.add(mobMesh);
                     
                     // Determine if Melee or Ranged based on name
@@ -1443,6 +1523,9 @@ function generateEnvironment() {
                         mesh: mobMesh, 
                         type: "mob", 
                         active: true, // Switched to true
+                        hp: mobData.hp,       // Track current HP
+                        maxHp: mobData.hp,    // Track max HP
+                        ui: mobUI,            // Save UI to update it later
                         attackType: isRanged ? "ranged" : "melee",
                         speed: 0.3 + (Math.random() * 0.2), // Randomize speed slightly
                         damage: Math.floor(mobData.hp / 4) + 2, // Damage scales with their HP
@@ -1601,7 +1684,7 @@ let eruptionCooldown = 0;
           }
       }
 
-     function animate() {
+   function animate() {
         requestAnimationFrame(animate);
         updateUI(); // Keep UI updated
 
@@ -1622,10 +1705,8 @@ let eruptionCooldown = 0;
                     enemy.mesh.visible = true;
                     enemy.active = true;
                     
-                    // (Later, we will put their movement/chasing code right here)
-                    if (enemy.type === "mob" || enemy.type === "boss") {
-                         enemy.mesh.rotation.y += 1 * delta; // Just spinning them slowly for now so you know they are alive
-                    }
+                    // SPINNING CODE WAS REMOVED FROM HERE!
+                    
                 } else {
                     // If outside radius, put them to sleep!
                     enemy.mesh.visible = false;
@@ -1780,7 +1861,8 @@ let eruptionCooldown = 0;
             velocityY = 0;
             canJump = true;
         }
-/// --- 5. ANIMATION (Walking & Sprinting) ---
+
+      // --- 5. ANIMATION (Walking & Sprinting) ---
         if (isFlying) {
             let targetPitch = 0; // Default upright pose for hovering
             
@@ -1826,6 +1908,7 @@ let eruptionCooldown = 0;
             player.lArm.rotation.x = 0; player.rArm.rotation.x = 0;
             player.rotation.x = 0;
         }
+
       // --- 6. Move Player & WALL COLLISION ---
         
         // 1. Calculate which way the character SHOULD face based on WASD
@@ -1884,7 +1967,7 @@ let eruptionCooldown = 0;
             }
         }
 
-        const moveSpeed = currentSpeed * delta;;
+        const moveSpeed = currentSpeed * delta;
 
         // NEW: Collision Checking Function
         // Casts a short ray from the player's chest in the direction they want to move
@@ -1914,6 +1997,7 @@ let eruptionCooldown = 0;
                 lastStepTime = now;
             }
         }
+
        // --- 7. Update Camera ---
         if (isShiftLocked) {
             // ROBLOX MODE: Player turns with camera, over-the-shoulder view
@@ -1934,7 +2018,7 @@ let eruptionCooldown = 0;
             camera.translateY(6);
         }
 
-// --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
+      // --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
         eruptionCooldown -= 0.016; // timer to check 1 time per second
         if (window.volcanoData && eruptionCooldown <= 0) {
             eruptionCooldown = 1.0; 
@@ -2008,7 +2092,8 @@ let eruptionCooldown = 0;
                 document.getElementById('white-out').style.opacity = '0';
             }
         }      
-// --- MULTIPLAYER MOVEMENT SYNC ---
+
+        // --- MULTIPLAYER MOVEMENT SYNC ---
         if (window.socket && player) {
             window.socket.emit('player-moved', {
                 x: player.position.x,
@@ -2078,8 +2163,9 @@ let eruptionCooldown = 0;
                 }
             }
         }
-         renderer.render(scene, camera);
-      }
+        
+        renderer.render(scene, camera);
+    }
       const menuBtn = document.getElementById('toggle-menu-btn');
       const gameMenu = document.getElementById('game-menu');
 
@@ -2149,6 +2235,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
