@@ -58,14 +58,14 @@ io.on('connection', (socket) => {
             socket.emit('joined-success', roomName); 
             io.emit('server-list', gameRooms); 
 
-         // --- NEW: Adjusted Spawn Points for a MASSIVE Map ---
-            // Pushing players 250 units away from the center boss, 
-            // safely in the outer edges of the Forest biome.
+        // --- NEW: Scaled Spawn Points for a 20,000-Unit Map ---
+            // A coordinate of 1200 on X and Z puts the player roughly 1700 units 
+            // away from the center boss, safely inside the 2000-radius Forest.
             const spawnPoints = [
-                { x: 250, z: 250 },   // Deep North-East Forest
-                { x: -250, z: 250 },  // Deep North-West Forest
-                { x: 250, z: -250 },  // Deep South-East Forest
-                { x: -250, z: -250 }  // Deep South-West Forest
+                { x: 1200, z: 1200 },   // Deep North-East Forest
+                { x: -1200, z: 1200 },  // Deep North-West Forest
+                { x: 1200, z: -1200 },  // Deep South-East Forest
+                { x: -1200, z: -1200 }  // Deep South-West Forest
             ];
             
             // Pick one of the 4 locations randomly
@@ -76,9 +76,9 @@ io.on('connection', (socket) => {
                 username: playerName, 
                 room: roomName,
                 x: randomSpawn.x, 
-                y: 50, // Dropped from higher up just in case the terrain is hilly here!
+                y: 100, // Dropping from 100 just to be safe with the new massive scale!
                 z: randomSpawn.z
-            };;
+            };
 
             const playersInThisRoom = {};
             for (let id in allPlayers) {
@@ -135,6 +135,7 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
 
 
