@@ -168,6 +168,15 @@
     </div>
 
   <body>
+    <button id="server-browser-btn" style="position: absolute; top: 20px; left: 100px; z-index: 1500; padding: 10px 15px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; border-radius: 5px; font-family: 'Courier New', sans-serif; font-weight: bold;">🌐 Servers</button>
+
+    <div id="server-browser-menu" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 30, 0.95); border: 2px solid #00aaff; box-shadow: 0 0 15px #00aaff; padding: 20px; border-radius: 10px; color: white; z-index: 2500; display: none; flex-direction: column; align-items: center; font-family: sans-serif;">
+        <button id="close-server-browser" style="position: absolute; top: 10px; right: 10px; background: #ff4444; color: white; border: none; cursor: pointer; padding: 5px 10px; border-radius: 5px; font-weight: bold;">X</button>
+        <h2 style="margin-top: 0; color: #00aaff;">Server Browser</h2>
+        <p style="font-size: 14px; color: #ccc; margin-bottom: 15px;">Switch to another active server:</p>
+        <div id="in-game-server-list" style="width: 100%; display: flex; flex-direction: column; gap: 10px; max-height: 300px; overflow-y: auto;">
+            </div>
+    </div>
     <button id="chat-toggle-btn" style="position: absolute; top: 20px; left: 20px; z-index: 1500; padding: 10px 15px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; border-radius: 5px; font-family: 'Courier New', sans-serif; font-weight: bold;">💬 Chat</button>
 
     <div id="chat-container" style="position: absolute; top: 65px; left: 20px; width: 350px; z-index: 1500; display: none; transition: opacity 0.5s ease; opacity: 1;">
@@ -290,16 +299,53 @@
         otherPlayers[playerData.id] = otherPlayerGroup;
     }
 
-    // --- ORIGINAL LOBBY MENU CODE ---
+   // --- UPDATED SERVER LIST & SERVER BROWSER LOGIC ---
     socket.on('server-list', (rooms) => {
+        // 1. Update the Main Lobby Menu (When you first load the game)
         const textBox = document.getElementById('server-text');
-        textBox.innerHTML = ""; 
-        for (const roomName in rooms) {
-            const roomData = rooms[roomName];
-            
-            // NEW: Updated the onclick to send the object!
-            textBox.innerHTML += `<button onclick="window.socket.emit('join-room', { room: '${roomName}', username: document.getElementById('player-username').value })" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
+        if (textBox) {
+            textBox.innerHTML = ""; 
+            for (const roomName in rooms) {
+                const roomData = rooms[roomName];
+                textBox.innerHTML += `<button onclick="window.socket.emit('join-room', { room: '${roomName}', username: document.getElementById('player-username').value })" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
+            }
         }
+
+        // 2. Update the NEW In-Game Server Browser
+        const inGameBox = document.getElementById('in-game-server-list');
+        if (inGameBox) {
+            inGameBox.innerHTML = "";
+            for (const roomName in rooms) {
+                const roomData = rooms[roomName];
+                inGameBox.innerHTML += `<button onclick="window.switchServer('${roomName}')" style="padding: 10px; font-size: 16px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
+            }
+        }
+    });
+
+    // --- NEW: The logic to actually switch servers mid-game ---
+    window.switchServer = function(roomName) {
+        // Hide the browser menu
+        document.getElementById('server-browser-menu').style.display = 'none';
+
+        // VERY IMPORTANT: Delete the 3D models of the players from your OLD server!
+        if (typeof otherPlayers !== 'undefined') {
+            for (let id in otherPlayers) {
+                if (typeof scene !== 'undefined') scene.remove(otherPlayers[id]);
+                delete otherPlayers[id];
+            }
+        }
+
+        // Grab your username and send the request to join the new room!
+        const myUsername = document.getElementById('player-username').value || "Guest";
+        window.socket.emit('join-room', { room: roomName, username: myUsername });
+    };
+
+    // Open/Close the In-Game Menu Buttons
+    document.getElementById('server-browser-btn').addEventListener('click', () => {
+        document.getElementById('server-browser-menu').style.display = 'flex';
+    });
+    document.getElementById('close-server-browser').addEventListener('click', () => {
+        document.getElementById('server-browser-menu').style.display = 'none';
     });
 
      window.createServer = function() {
@@ -1982,6 +2028,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
