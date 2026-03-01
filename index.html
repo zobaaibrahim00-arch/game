@@ -1358,26 +1358,68 @@ function generateEnvironment() {
           giantVolcano.position.set(4000, 500, 4000); 
           scene.add(giantVolcano);
       }
-      }      function spawnEntities() {
+      }   
+// --- NEW: Custom Placeholder Model Generator ---
+    function createMobModel(mobData) {
+        const mobGroup = new THREE.Group();
+        const mat = new THREE.MeshStandardMaterial({ color: mobData.color });
+        
+        // Scale based on your biomeData sizes
+        const s = mobData.size / 3; 
+
+        // 1. Torso
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(s*1.5, s*2.5, s), mat);
+        torso.position.y = s * 2.5;
+        mobGroup.add(torso);
+
+        // 2. Head
+        const headGeo = mobData.type === 'boss' ? new THREE.DodecahedronGeometry(s) : new THREE.BoxGeometry(s*1.2, s*1.2, s*1.2);
+        const head = new THREE.Mesh(headGeo, mat);
+        head.position.y = (s * 2.5) + (s * 1.5);
+        mobGroup.add(head);
+
+        // 3. Arms (We save the right arm to animate attacks!)
+        const rArm = new THREE.Mesh(new THREE.BoxGeometry(s*0.6, s*2, s*0.6), mat);
+        rArm.position.set(s*1.1, s*2.5, 0);
+        mobGroup.add(rArm);
+        mobGroup.rArm = rArm; // Save reference for animation
+
+        const lArm = new THREE.Mesh(new THREE.BoxGeometry(s*0.6, s*2, s*0.6), mat);
+        lArm.position.set(-s*1.1, s*2.5, 0);
+        mobGroup.add(lArm);
+
+        // 4. Add visual flair for Ranged/Mage mobs!
+        if (['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name) || mobData.type === 'boss') {
+            const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(s*0.5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            crystal.position.y = (s * 2.5) + (s * 3);
+            mobGroup.add(crystal);
+        }
+
+        return mobGroup;
+    }
+      
+      function spawnEntities() {
         for (const biomeName in biomeData) {
             const biome = biomeData[biomeName];
 
-            // 1. Spawn the Boss INSIDE the Temple (Now a Cube!)
-            const bossGeo = new THREE.BoxGeometry(biome.boss.size, biome.boss.size, biome.boss.size);
-            const bossMat = new THREE.MeshStandardMaterial({ 
-                color: biome.boss.color, 
-                emissive: biome.boss.color, 
-                emissiveIntensity: 0.2 
-            });
-            const bossMesh = new THREE.Mesh(bossGeo, bossMat);
-            
-            // Y is set to 2 (floor height) + half the boss size so it doesn't sink into the ground
-            bossMesh.position.set(biome.center.x,10  + (biome.boss.size / 2), biome.center.z);
-            
-            // Hide by default for your optimizer
+            // 1. Spawn the Boss
+            const bossMesh = createMobModel({ ...biome.boss, type: "boss" });
+            bossMesh.position.set(biome.center.x, 0, biome.center.z);
             bossMesh.visible = false;
             scene.add(bossMesh);
-            enemies.push({ ...biome.boss, mesh: bossMesh, type: "boss", active: false });
+            
+            enemies.push({ 
+                ...biome.boss, 
+                mesh: bossMesh, 
+                type: "boss", 
+                active: true, // Switched to true so we can fight it!
+                attackType: "mage",
+                speed: 0.6,
+                damage: 50,
+                agroRange: 300,
+                attackRange: 40,
+                cooldown: 0
+            });
 
             // 2. Spawn 30 of each normal mob in this biome
             biome.mobs.forEach(mobData => {
@@ -1387,21 +1429,31 @@ function generateEnvironment() {
                     const x = Math.cos(angle) * radius;
                     const z = Math.sin(angle) * radius;
 
-                    const mobGeo = new THREE.BoxGeometry(mobData.size, mobData.size, mobData.size);
-                    const mobMat = new THREE.MeshStandardMaterial({ color: mobData.color });
-                    const mobMesh = new THREE.Mesh(mobGeo, mobMat);
-                    
-                    mobMesh.position.set(x, mobData.size / 2, z);
-                    
-                    // Hide them by default to save CPU!
+                    // USE OUR NEW MODEL GENERATOR
+                    const mobMesh = createMobModel(mobData);
+                    mobMesh.position.set(x, 0, z); // Set Y to 0, the model generator handles height!
                     mobMesh.visible = false; 
                     scene.add(mobMesh);
                     
-                    enemies.push({ ...mobData, mesh: mobMesh, type: "mob", active: false });
+                    // Determine if Melee or Ranged based on name
+                    const isRanged = ['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name);
+                    
+                    enemies.push({ 
+                        ...mobData, 
+                        mesh: mobMesh, 
+                        type: "mob", 
+                        active: true, // Switched to true
+                        attackType: isRanged ? "ranged" : "melee",
+                        speed: 0.3 + (Math.random() * 0.2), // Randomize speed slightly
+                        damage: Math.floor(mobData.hp / 4) + 2, // Damage scales with their HP
+                        agroRange: 150,
+                        attackRange: isRanged ? 60 : (mobData.size * 2 + 5), // Ranged shoot from far away!
+                        cooldown: 0
+                    });
                 }
             });
         }
-      }
+    }
       function onWindowResize() {
 
         camera.aspect = window.innerWidth / window.innerHeight;
@@ -1966,6 +2018,66 @@ let eruptionCooldown = 0;
             });
         }
 
+       // --- NEW: MOB AI LOGIC (AGRO, CHASE, ATTACK) ---
+        for (let i = 0; i < enemies.length; i++) {
+            let enemy = enemies[i];
+            
+            // OPTIMIZATION: Only process AI if the mob is currently visible on screen!
+            if (!enemy.active || !enemy.mesh.visible) continue;
+
+            const dist = player.position.distanceTo(enemy.mesh.position);
+
+            // 1. CHASE LOGIC
+            if (dist < enemy.agroRange && dist > enemy.attackRange) {
+                enemy.mesh.lookAt(player.position.x, enemy.mesh.position.y, player.position.z);
+                
+                const dir = new THREE.Vector3();
+                enemy.mesh.getWorldDirection(dir);
+                enemy.mesh.position.addScaledVector(dir, enemy.speed);
+                
+                // Bobbing walk animation
+                enemy.mesh.position.y = Math.abs(Math.sin(performance.now() * 0.01)) * (enemy.size / 3);
+            } 
+            // 2. IDLE LOGIC (Player ran away)
+            else if (dist >= enemy.agroRange) {
+                enemy.mesh.position.y = 0; // Snap to ground
+            }
+
+            // 3. ATTACK LOGIC
+            if (dist <= enemy.attackRange) {
+                enemy.cooldown -= 1;
+                
+                if (enemy.cooldown <= 0) {
+                    // SWING ANIMATION (Rotate their right arm!)
+                    if (enemy.mesh.rArm) enemy.mesh.rArm.rotation.x = -Math.PI / 2; 
+                    
+                    // Reset arm after a tiny delay
+                    setTimeout(() => {
+                        if (enemy.mesh && enemy.mesh.rArm) enemy.mesh.rArm.rotation.x = 0;
+                    }, 200);
+
+                    // DEAL DAMAGE TO PLAYER
+                    // Note: Ensure `currentHp` or your health variable is updated here!
+                    if (typeof currentHp !== 'undefined') {
+                        currentHp -= enemy.damage;
+                        if (typeof updateUI === 'function') updateUI();
+                    }
+                    
+                    // Visual feedback: flash a red hit marker (if you have one)
+                    const flash = document.getElementById('white-out');
+                    if (flash) {
+                        flash.style.background = 'red';
+                        flash.style.opacity = '0.4';
+                        setTimeout(() => { flash.style.opacity = '0'; flash.style.background = 'white'; }, 200);
+                    }
+                    
+                    console.log(`Hit by ${enemy.name} for ${enemy.damage} dmg!`);
+                    
+                    // Ranged mobs attack slower than melee mobs
+                    enemy.cooldown = enemy.attackType === 'ranged' ? 90 : 60; 
+                }
+            }
+        }
          renderer.render(scene, camera);
       }
       const menuBtn = document.getElementById('toggle-menu-btn');
@@ -2037,6 +2149,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
