@@ -948,61 +948,74 @@ const biomeData = {
         // Make sure we are locked into the game before swinging
         if (document.pointerLockElement !== document.body) return; 
 
-        // --- UPGRADED: Bulletproof Damage System ---
+       // --- UPGRADED: Damage & Respawn System ---
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
             
-            if (enemy.active && enemy.mesh.visible) {
+            // Only hit enemies that are alive!
+            if (enemy.active && enemy.mesh.visible && !enemy.isDead) {
                 
-                // 1. Calculate 2D Distance (Ignore Height!)
-                // This way, jumping or flying doesn't make you "miss" the enemy
                 const dx = player.position.x - enemy.mesh.position.x;
                 const dz = player.position.z - enemy.mesh.position.z;
                 const flatDistance = Math.sqrt(dx * dx + dz * dz);
-                
-                // 2. Dynamic Attack Range
-                // Base range is 25, but we ADD the enemy's size so we can hit giant bosses!
                 const hitRange = 25 + (enemy.size || 0);
 
                 if (flatDistance < hitRange) {
                     
-                    // 3. Get Base Attack Stat from UI (defaults to 0)
                     const playerAttackStat = parseInt(document.getElementById('stat-attack').innerText) || 0;
-                    
-                    // 4. Force Weapon Damage (even if the inventory didn't equip it properly yet)
                     const weaponDamage = 10; 
-
                     const totalDamage = weaponDamage + playerAttackStat;
                     
-                    // 5. Apply Damage!
                     enemy.hp -= totalDamage;
                     
-                    // 6. Update Health Bar UI or Kill them!
                     if (enemy.hp > 0 && enemy.ui) {
                         drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
                         enemy.ui.texture.needsUpdate = true; 
                         
-                        // Tiny knockback effect away from the player
                         const pushback = new THREE.Vector3(dx, 0, dz).normalize();
                         enemy.mesh.position.addScaledVector(pushback, 2);
                         
                     } else if (enemy.hp <= 0) {
-                        // THEY DIED! Remove them from the world
-                        scene.remove(enemy.mesh);
+                        // --- THEY DIED! ---
+                        enemy.isDead = true;         // Flag them as dead
+                        enemy.mesh.visible = false;  // Hide them immediately
                         enemy.active = false;
                         
                         window.gainExp(enemy.exp); 
                         console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
                         
-                        enemies.splice(i, 1);
+                        // --- RESPAWN TIMER ---
+                        // 4 mins (240,000 ms) for bosses, 20 secs (20,000 ms) for normal mobs
+                        const respawnDelay = enemy.type === "boss" ? 240000 : 20000;
+                        
+                        setTimeout(() => {
+                            // HEAL THEM
+                            enemy.hp = enemy.maxHp;
+                            enemy.isDead = false;
+                            
+                            // RESET UI
+                            if (enemy.ui) {
+                                drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                                enemy.ui.texture.needsUpdate = true;
+                            }
+                            
+                            // TELEPORT THEM TO A NEW LOCATION
+                            if (enemy.type === "boss") {
+                                // Bosses spawn exactly in the center of their temple
+                                enemy.mesh.position.set(enemy.spawnPos.x, 0, enemy.spawnPos.z);
+                            } else if (enemy.spawnData) {
+                                // Mobs pick a random new spot in their biome
+                                const radius = enemy.spawnData.minR + Math.random() * (enemy.spawnData.maxR - enemy.spawnData.minR);
+                                const angle = enemy.spawnData.startA + Math.random() * (enemy.spawnData.endA - enemy.spawnData.startA);
+                                enemy.mesh.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+                            }
+                        }, respawnDelay);
                     }
                     
-                    // We hit something, so stop the loop (only hit 1 enemy per swing)
                     break; 
                 }
             }
         }
-    });
         document.addEventListener('keyup', onKeyUp);
 
         // 8. Renderer Setup
@@ -1481,7 +1494,7 @@ function generateEnvironment() {
         return { sprite, canvas, ctx, texture };
     }
       
-     function spawnEntities() {
+    function spawnEntities() {
         for (const biomeName in biomeData) {
             const biome = biomeData[biomeName];
 
@@ -1490,7 +1503,6 @@ function generateEnvironment() {
             bossMesh.position.set(biome.center.x, 0, biome.center.z);
             bossMesh.visible = false;
             
-            // NEW: Attach the Health Bar UI to the Boss
             const bossUI = createMobUI(biome.boss.name, biome.boss.hp);
             bossUI.sprite.position.y = (biome.boss.size * 2) + 2; 
             bossMesh.add(bossUI.sprite);
@@ -1501,10 +1513,12 @@ function generateEnvironment() {
                 ...biome.boss, 
                 mesh: bossMesh, 
                 type: "boss", 
-                active: true, // Switched to true so we can fight it!
-                hp: biome.boss.hp,       // Track current HP
-                maxHp: biome.boss.hp,    // Track max HP
-                ui: bossUI,              // Save UI to update it later
+                active: true, 
+                isDead: false,           // NEW: Track if it is dead!
+                spawnPos: biome.center,  // NEW: Save boss spawn location
+                hp: biome.boss.hp,       
+                maxHp: biome.boss.hp,    
+                ui: bossUI,              
                 attackType: "mage",
                 speed: 0.6,
                 damage: 50,
@@ -1513,42 +1527,45 @@ function generateEnvironment() {
                 cooldown: 0
             });
 
-            // 2. Spawn 30 of each normal mob in this biome
+            // --- NEW: 3x Mobs for Outer Biomes! ---
+            // Forest stays at 30. Earth, Sky, Darkness, Volcano get 90!
+            const spawnCount = biomeName === 'forest' ? 30 : 90;
+
+            // 2. Spawn the normal mobs
             biome.mobs.forEach(mobData => {
-                for (let i = 0; i < 30; i++) {
+                for (let i = 0; i < spawnCount; i++) {
                     const radius = biome.spawn.minR + Math.random() * (biome.spawn.maxR - biome.spawn.minR);
                     const angle = biome.spawn.startA + Math.random() * (biome.spawn.endA - biome.spawn.startA);
                     const x = Math.cos(angle) * radius;
                     const z = Math.sin(angle) * radius;
 
-                    // USE OUR NEW MODEL GENERATOR
                     const mobMesh = createMobModel(mobData);
-                    mobMesh.position.set(x, 0, z); // Set Y to 0, the model generator handles height!
+                    mobMesh.position.set(x, 0, z); 
                     mobMesh.visible = false; 
                     
-                    // NEW: Attach the Health Bar UI to the Mob
                     const mobUI = createMobUI(mobData.name, mobData.hp);
                     mobUI.sprite.position.y = (mobData.size * 2) + 2; 
                     mobMesh.add(mobUI.sprite);
                     
                     scene.add(mobMesh);
                     
-                    // Determine if Melee or Ranged based on name
                     const isRanged = ['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name);
                     
                     enemies.push({ 
                         ...mobData, 
                         mesh: mobMesh, 
                         type: "mob", 
-                        active: true, // Switched to true
-                        hp: mobData.hp,       // Track current HP
-                        maxHp: mobData.hp,    // Track max HP
-                        ui: mobUI,            // Save UI to update it later
+                        active: true,
+                        isDead: false,        // NEW: Track if dead
+                        spawnData: biome.spawn, // NEW: Save the biome boundaries for respawning
+                        hp: mobData.hp,       
+                        maxHp: mobData.hp,    
+                        ui: mobUI,            
                         attackType: isRanged ? "ranged" : "melee",
-                        speed: 0.3 + (Math.random() * 0.2), // Randomize speed slightly
-                        damage: Math.floor(mobData.hp / 4) + 2, // Damage scales with their HP
+                        speed: 0.3 + (Math.random() * 0.2), 
+                        damage: Math.floor(mobData.hp / 4) + 2, 
                         agroRange: 150,
-                        attackRange: isRanged ? 60 : (mobData.size * 2 + 5), // Ranged shoot from far away!
+                        attackRange: isRanged ? 60 : (mobData.size * 2 + 5), 
                         cooldown: 0
                     });
                 }
@@ -1713,6 +1730,13 @@ let eruptionCooldown = 0;
         // --- RADIUS OPTIMIZER (CULLING) ---
         if (player) {
             enemies.forEach(enemy => {
+                // NEW: If they are dead, keep them hidden and skip the distance check!
+                if (enemy.isDead) {
+                    enemy.mesh.visible = false;
+                    enemy.active = false;
+                    return; 
+                }
+
                 // Calculate distance from player to enemy
                 const dx = player.position.x - enemy.mesh.position.x;
                 const dz = player.position.z - enemy.mesh.position.z;
@@ -1722,9 +1746,6 @@ let eruptionCooldown = 0;
                 if (distance < RENDER_RADIUS) {
                     enemy.mesh.visible = true;
                     enemy.active = true;
-                    
-                    // SPINNING CODE WAS REMOVED FROM HERE!
-                    
                 } else {
                     // If outside radius, put them to sleep!
                     enemy.mesh.visible = false;
@@ -2125,8 +2146,8 @@ let eruptionCooldown = 0;
         for (let i = 0; i < enemies.length; i++) {
             let enemy = enemies[i];
             
-            // OPTIMIZATION: Only process AI if the mob is currently visible on screen!
-            if (!enemy.active || !enemy.mesh.visible) continue;
+            // OPTIMIZATION: Only process AI if the mob is currently visible on screen AND alive!
+            if (!enemy.active || !enemy.mesh.visible || enemy.isDead) continue;
 
             const dist = player.position.distanceTo(enemy.mesh.position);
 
@@ -2160,7 +2181,6 @@ let eruptionCooldown = 0;
                     }, 200);
 
                     // DEAL DAMAGE TO PLAYER
-                    // Note: Ensure `currentHp` or your health variable is updated here!
                     if (typeof currentHp !== 'undefined') {
                         currentHp -= enemy.damage;
                         if (typeof updateUI === 'function') updateUI();
@@ -2253,6 +2273,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
