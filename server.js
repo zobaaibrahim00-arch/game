@@ -30,11 +30,25 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Update the join-room listener to accept an object with room and username
+    // Update the join-room listener to handle SWITCHING servers
     socket.on('join-room', (data) => {
         let roomName = data.room;
-        let playerName = data.username || "Guest"; // Default to Guest if they leave it blank
+        let playerName = data.username || "Guest"; 
         let room = gameRooms[roomName];
+
+        // --- NEW: If they are already in a room, make them leave it first! ---
+        if (socket.currentRoom && socket.currentRoom !== roomName) {
+            let oldRoom = gameRooms[socket.currentRoom];
+            if (oldRoom) {
+                oldRoom.players--;
+                // Clean up empty rooms
+                if (oldRoom.players <= 0) delete gameRooms[socket.currentRoom];
+                
+                io.emit('server-list', gameRooms); // Update everyone's menus
+                socket.leave(socket.currentRoom); // Actually leave the websocket room
+                io.to(socket.currentRoom).emit('player-left', socket.id); // Tell old room to delete your avatar
+            }
+        }
 
         if (room && room.players < room.max) {
             room.players++; 
@@ -44,10 +58,9 @@ io.on('connection', (socket) => {
             socket.emit('joined-success', roomName); 
             io.emit('server-list', gameRooms); 
 
-            // Save their custom username to their player profile!
             allPlayers[socket.id] = {
                 id: socket.id,
-                username: playerName, // <--- NEW
+                username: playerName, 
                 room: roomName,
                 x: Math.floor(Math.random() * 10) - 5, 
                 y: 10,
@@ -109,5 +122,6 @@ io.on('connection', (socket) => {
 http.listen(3000, () => {
     console.log("Multiplayer server is awake and listening!");
 });
+
 
 
