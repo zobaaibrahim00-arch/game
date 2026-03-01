@@ -1999,6 +1999,15 @@ let eruptionCooldown = 0;
         for (let id in players) {
             if (id !== socket.id) { 
                 spawnOtherPlayer(players[id]);
+            } else {
+                // --- NEW: Teleport OUR local player to the server's chosen spawn point! ---
+                // Wait for the server to give us our safe coordinates, then move us there.
+                if (typeof player !== 'undefined' && typeof camera !== 'undefined') {
+                    player.position.set(players[id].x, players[id].y, players[id].z);
+                    // Move the camera so you don't leave your view behind!
+                    // Assuming your camera sits a little bit above the player's feet
+                    camera.position.set(players[id].x, players[id].y + 2, players[id].z);
+                }
             }
         }
     });
@@ -2028,6 +2037,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
