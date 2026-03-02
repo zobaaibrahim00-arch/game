@@ -965,10 +965,22 @@ const biomeData = {
                     const playerAttackStat = parseInt(document.getElementById('stat-attack').innerText) || 0;
                     const weaponDamage = 10; 
                     const totalDamage = weaponDamage + playerAttackStat;
-                    
                     enemy.hp -= totalDamage;
                     
-                    if (enemy.hp > 0 && enemy.ui) {
+                    if (enemy.hp > 0) {
+                        // LAZY LOAD: If they don't have a unique UI yet, make one now!
+                        if (!enemy.ui) {
+                            enemy.ui = createMobUI(enemy.name, enemy.maxHp);
+                            enemy.ui.sprite.position.y = (enemy.size * 2) + 2;
+                            enemy.mesh.add(enemy.ui.sprite);
+                            
+                            // Remove the shared "Full HP" template
+                            if (enemy.sharedSprite) {
+                                enemy.mesh.remove(enemy.sharedSprite);
+                            }
+                        }
+                        
+                        // Update their unique dropping health bar
                         drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
                         enemy.ui.texture.needsUpdate = true; 
                         
@@ -977,15 +989,13 @@ const biomeData = {
                         
                     } else if (enemy.hp <= 0) {
                         // --- THEY DIED! ---
-                        enemy.isDead = true;         // Flag them as dead
-                        enemy.mesh.visible = false;  // Hide them immediately
+                        enemy.isDead = true;         
+                        enemy.mesh.visible = false;  
                         enemy.active = false;
                         
                         window.gainExp(enemy.exp); 
                         console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
                         
-                        // --- RESPAWN TIMER ---
-                        // 4 mins (240,000 ms) for bosses, 20 secs (20,000 ms) for normal mobs
                         const respawnDelay = enemy.type === "boss" ? 240000 : 20000;
                         
                         setTimeout(() => {
@@ -993,7 +1003,7 @@ const biomeData = {
                             enemy.hp = enemy.maxHp;
                             enemy.isDead = false;
                             
-                            // RESET UI
+                            // RESET UI (if they had a unique one made)
                             if (enemy.ui) {
                                 drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
                                 enemy.ui.texture.needsUpdate = true;
@@ -1001,10 +1011,8 @@ const biomeData = {
                             
                             // TELEPORT THEM TO A NEW LOCATION
                             if (enemy.type === "boss") {
-                                // Bosses spawn exactly in the center of their temple
                                 enemy.mesh.position.set(enemy.spawnPos.x, 0, enemy.spawnPos.z);
                             } else if (enemy.spawnData) {
-                                // Mobs pick a random new spot in their biome
                                 const radius = enemy.spawnData.minR + Math.random() * (enemy.spawnData.maxR - enemy.spawnData.minR);
                                 const angle = enemy.spawnData.startA + Math.random() * (enemy.spawnData.endA - enemy.spawnData.startA);
                                 enemy.mesh.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
@@ -1411,45 +1419,60 @@ function generateEnvironment() {
           scene.add(giantVolcano);
       }
       }   
-// --- NEW: Custom Placeholder Model Generator ---
+// --- NEW: SHARED SHAPES (PREVENTS MEMORY CRASH) ---
+    const sharedGeos = {
+        box: new THREE.BoxGeometry(1, 1, 1),
+        bossHead: new THREE.DodecahedronGeometry(1),
+        crystal: new THREE.OctahedronGeometry(1)
+    };
+    const sharedMats = {}; // Caches materials by color
+
     function createMobModel(mobData) {
         const mobGroup = new THREE.Group();
-        const mat = new THREE.MeshStandardMaterial({ color: mobData.color });
         
-        // Scale based on your biomeData sizes
+        // Share materials based on color so we don't make 2,000 copies!
+        if (!sharedMats[mobData.color]) {
+            sharedMats[mobData.color] = new THREE.MeshStandardMaterial({ color: mobData.color });
+        }
+        const mat = sharedMats[mobData.color];
+        
         const s = mobData.size / 3; 
 
         // 1. Torso
-        const torso = new THREE.Mesh(new THREE.BoxGeometry(s*1.5, s*2.5, s), mat);
+        const torso = new THREE.Mesh(sharedGeos.box, mat);
+        torso.scale.set(s*1.5, s*2.5, s); // Scale the shared box!
         torso.position.y = s * 2.5;
         mobGroup.add(torso);
 
         // 2. Head
-        const headGeo = mobData.type === 'boss' ? new THREE.DodecahedronGeometry(s) : new THREE.BoxGeometry(s*1.2, s*1.2, s*1.2);
-        const head = new THREE.Mesh(headGeo, mat);
+        const head = new THREE.Mesh(mobData.type === 'boss' ? sharedGeos.bossHead : sharedGeos.box, mat);
+        head.scale.set(s*1.2, s*1.2, s*1.2);
         head.position.y = (s * 2.5) + (s * 1.5);
         mobGroup.add(head);
 
-        // 3. Arms (We save the right arm to animate attacks!)
-        const rArm = new THREE.Mesh(new THREE.BoxGeometry(s*0.6, s*2, s*0.6), mat);
+        // 3. Arms
+        const rArm = new THREE.Mesh(sharedGeos.box, mat);
+        rArm.scale.set(s*0.6, s*2, s*0.6);
         rArm.position.set(s*1.1, s*2.5, 0);
         mobGroup.add(rArm);
-        mobGroup.rArm = rArm; // Save reference for animation
+        mobGroup.rArm = rArm; 
 
-        const lArm = new THREE.Mesh(new THREE.BoxGeometry(s*0.6, s*2, s*0.6), mat);
+        const lArm = new THREE.Mesh(sharedGeos.box, mat);
+        lArm.scale.set(s*0.6, s*2, s*0.6);
         lArm.position.set(-s*1.1, s*2.5, 0);
         mobGroup.add(lArm);
 
-        // 4. Add visual flair for Ranged/Mage mobs!
+        // 4. Crystals
         if (['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name) || mobData.type === 'boss') {
-            const crystal = new THREE.Mesh(new THREE.OctahedronGeometry(s*0.5), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+            if (!sharedMats['crystal']) sharedMats['crystal'] = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const crystal = new THREE.Mesh(sharedGeos.crystal, sharedMats['crystal']);
+            crystal.scale.set(s*0.5, s*0.5, s*0.5);
             crystal.position.y = (s * 2.5) + (s * 3);
             mobGroup.add(crystal);
         }
 
         return mobGroup;
     }
-
       // --- NEW: Floating Name Tag & HP Bar Generator ---
     function drawHealthBar(ctx, name, currentHp, maxHp) {
         ctx.clearRect(0, 0, 256, 128); // Clear previous frame
@@ -1477,6 +1500,26 @@ function generateEnvironment() {
         ctx.font = 'bold 16px Courier New';
         ctx.fillText(`${Math.floor(currentHp)} / ${maxHp}`, 128, 66);
     }
+       // --- NEW: UI CACHE ---
+    const sharedUIMats = {};
+
+    function getSharedMobUI(name, maxHp) {
+        // If we haven't made a Full-HP template for this enemy type yet, make it!
+        if (!sharedUIMats[name]) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; 
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            drawHealthBar(ctx, name, maxHp, maxHp);
+            const texture = new THREE.CanvasTexture(canvas);
+            sharedUIMats[name] = new THREE.SpriteMaterial({ map: texture, transparent: true });
+        }
+        
+        // Return a lightweight sprite that points to the shared template
+        const sprite = new THREE.Sprite(sharedUIMats[name]);
+        sprite.scale.set(10, 5, 1);
+        return sprite;
+    }
 
     function createMobUI(name, maxHp) {
         const canvas = document.createElement('canvas');
@@ -1494,7 +1537,7 @@ function generateEnvironment() {
         return { sprite, canvas, ctx, texture };
     }
       
-    function spawnEntities() {
+   function spawnEntities() {
         for (const biomeName in biomeData) {
             const biome = biomeData[biomeName];
 
@@ -1503,9 +1546,10 @@ function generateEnvironment() {
             bossMesh.position.set(biome.center.x, 0, biome.center.z);
             bossMesh.visible = false;
             
-            const bossUI = createMobUI(biome.boss.name, biome.boss.hp);
-            bossUI.sprite.position.y = (biome.boss.size * 2) + 2; 
-            bossMesh.add(bossUI.sprite);
+            // --- FIXED: USE SHARED UI FOR THE BOSS ---
+            const bossSharedSprite = getSharedMobUI(biome.boss.name, biome.boss.hp);
+            bossSharedSprite.position.y = (biome.boss.size * 2) + 2; 
+            bossMesh.add(bossSharedSprite);
             
             scene.add(bossMesh);
             
@@ -1514,11 +1558,12 @@ function generateEnvironment() {
                 mesh: bossMesh, 
                 type: "boss", 
                 active: true, 
-                isDead: false,           // NEW: Track if it is dead!
-                spawnPos: biome.center,  // NEW: Save boss spawn location
+                isDead: false,           // Track if it is dead!
+                spawnPos: biome.center,  // Save boss spawn location
                 hp: biome.boss.hp,       
                 maxHp: biome.boss.hp,    
-                ui: bossUI,              
+                sharedSprite: bossSharedSprite, // <-- Save the shared template
+                ui: null,                       // <-- Leave unique UI empty for now!
                 attackType: "mage",
                 speed: 0.6,
                 damage: 50,
@@ -1527,7 +1572,6 @@ function generateEnvironment() {
                 cooldown: 0
             });
 
-            // --- NEW: 3x Mobs for Outer Biomes! ---
             // Forest stays at 30. Earth, Sky, Darkness, Volcano get 90!
             const spawnCount = biomeName === 'forest' ? 30 : 90;
 
@@ -1543,9 +1587,10 @@ function generateEnvironment() {
                     mobMesh.position.set(x, 0, z); 
                     mobMesh.visible = false; 
                     
-                    const mobUI = createMobUI(mobData.name, mobData.hp);
-                    mobUI.sprite.position.y = (mobData.size * 2) + 2; 
-                    mobMesh.add(mobUI.sprite);
+                    // --- FIXED: USE SHARED UI FOR THE 1,900 MOBS ---
+                    const sharedSprite = getSharedMobUI(mobData.name, mobData.hp);
+                    sharedSprite.position.y = (mobData.size * 2) + 2; 
+                    mobMesh.add(sharedSprite);
                     
                     scene.add(mobMesh);
                     
@@ -1556,11 +1601,12 @@ function generateEnvironment() {
                         mesh: mobMesh, 
                         type: "mob", 
                         active: true,
-                        isDead: false,        // NEW: Track if dead
-                        spawnData: biome.spawn, // NEW: Save the biome boundaries for respawning
+                        isDead: false,        
+                        spawnData: biome.spawn, 
                         hp: mobData.hp,       
                         maxHp: mobData.hp,    
-                        ui: mobUI,            
+                        sharedSprite: sharedSprite, // <-- Save the shared template
+                        ui: null,                   // <-- Leave unique UI empty until hit!
                         attackType: isRanged ? "ranged" : "melee",
                         speed: 0.3 + (Math.random() * 0.2), 
                         damage: Math.floor(mobData.hp / 4) + 2, 
@@ -2273,6 +2319,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
