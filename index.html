@@ -948,18 +948,15 @@ const biomeData = {
         // Make sure we are locked into the game before swinging
         if (document.pointerLockElement !== document.body) return; 
 
-      // --- UPGRADED: Bulletproof Damage System ---
+    // --- UPGRADED: Lazy-Load Damage System ---
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
             
             if (enemy.active && enemy.mesh.visible) {
                 
-                // 1. Calculate 2D Distance (Ignore Height!)
                 const dx = player.position.x - enemy.mesh.position.x;
                 const dz = player.position.z - enemy.mesh.position.z;
                 const flatDistance = Math.sqrt(dx * dx + dz * dz);
-                
-                // 2. Dynamic Attack Range
                 const hitRange = 25 + (enemy.size || 0);
 
                 if (flatDistance < hitRange) {
@@ -970,15 +967,26 @@ const biomeData = {
                     
                     enemy.hp -= totalDamage;
                     
-                    if (enemy.hp > 0 && enemy.ui) {
+                    if (enemy.hp > 0) {
+                        
+                        // CRITICAL FIX: LAZY LOAD THE HEALTH BAR!
+                        // If they don't have a UI yet, create it right now!
+                        if (!enemy.ui) {
+                            enemy.ui = createMobUI(enemy.name, enemy.maxHp);
+                            enemy.ui.sprite.position.y = (enemy.size * 2) + 2;
+                            enemy.mesh.add(enemy.ui.sprite);
+                        }
+
+                        // Update the red/green health bar
                         drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
                         enemy.ui.texture.needsUpdate = true; 
                         
+                        // Tiny knockback
                         const pushback = new THREE.Vector3(dx, 0, dz).normalize();
                         enemy.mesh.position.addScaledVector(pushback, 2);
                         
                     } else if (enemy.hp <= 0) {
-                        // THEY DIED! Remove them from the world permanently
+                        // --- THEY DIED PERMANENTLY! ---
                         scene.remove(enemy.mesh);
                         enemy.active = false;
                         
@@ -1477,11 +1485,11 @@ function generateEnvironment() {
         
         sprite.scale.set(10, 5, 1); 
         return { sprite, canvas, ctx, texture };
-    function spawnEntities() {
+   function spawnEntities() {
         for (const biomeName in biomeData) {
             const biome = biomeData[biomeName];
 
-            // 1. Spawn the Boss
+            // 1. Spawn the Boss (Boss gets a UI immediately, 1 is fine!)
             const bossMesh = createMobModel({ ...biome.boss, type: "boss" });
             bossMesh.position.set(biome.center.x, 0, biome.center.z);
             bossMesh.visible = false;
@@ -1508,7 +1516,7 @@ function generateEnvironment() {
                 cooldown: 0
             });
 
-            // 2. Spawn 30 of each normal mob in this biome
+            // 2. Spawn 30 normal mobs
             biome.mobs.forEach(mobData => {
                 for (let i = 0; i < 30; i++) {
                     const radius = biome.spawn.minR + Math.random() * (biome.spawn.maxR - biome.spawn.minR);
@@ -1519,10 +1527,6 @@ function generateEnvironment() {
                     const mobMesh = createMobModel(mobData);
                     mobMesh.position.set(x, 0, z); 
                     mobMesh.visible = false; 
-                    
-                    const mobUI = createMobUI(mobData.name, mobData.hp);
-                    mobUI.sprite.position.y = (mobData.size * 2) + 2; 
-                    mobMesh.add(mobUI.sprite);
                     
                     scene.add(mobMesh);
                     
@@ -1535,7 +1539,7 @@ function generateEnvironment() {
                         active: true,
                         hp: mobData.hp,       
                         maxHp: mobData.hp,    
-                        ui: mobUI,            
+                        ui: null,             // <--- CRITICAL FIX: STOPS THE BROWSER CRASH
                         attackType: isRanged ? "ranged" : "melee",
                         speed: 0.3 + (Math.random() * 0.2), 
                         damage: Math.floor(mobData.hp / 4) + 2, 
@@ -2241,6 +2245,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
