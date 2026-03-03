@@ -996,14 +996,16 @@ const biomeData = {
                         enemies.splice(i, 1);
                     }
                     
-                    break; 
+                   break; 
                 }
             }
-        });
-        document.addEventListener('keyup', onKeyUp);
+        } // This closes the 'for' loop
+    });   // This closes the 'mousedown' listener (DELETE THE EXTRA ONE BELOW THIS)
 
-        // 8. Renderer Setup
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+    document.addEventListener('keyup', onKeyUp);
+
+    // 8. Renderer Setup
+    renderer = new THREE.WebGLRenderer({ antialias: true }); 
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
@@ -2257,6 +2259,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
