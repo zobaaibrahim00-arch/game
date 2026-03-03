@@ -1425,50 +1425,61 @@ function generateEnvironment() {
         ctx.fillText(`${Math.floor(currentHp)} / ${maxHp}`, 128, 66);
     }
 
-       function createMobModel(mobData) {
-        const mobGroup = new THREE.Group();
-        const mat = new THREE.MeshStandardMaterial({ color: mobData.color });
-        const s = mobData.size / 3; 
+    // --- MEMORY OPTIMIZATION CACHE ---
+        const sharedGeo = {
+            box: new THREE.BoxGeometry(1, 1, 1),
+            bossHead: new THREE.DodecahedronGeometry(1),
+            crystal: new THREE.OctahedronGeometry(1)
+        };
+        const sharedMats = {}; // Cache materials by color
 
-        // 1. Torso
-        const torsoGeo = new THREE.BoxGeometry(1, 1, 1);
-        const torso = new THREE.Mesh(torsoGeo, mat);
-        torso.scale.set(s*1.5, s*2.5, s); 
-        torso.position.y = s * 2.5;
-        mobGroup.add(torso);
+        function createMobModel(mobData) {
+            const mobGroup = new THREE.Group();
+            
+            // Reuse materials instead of creating 600 new ones!
+            if (!sharedMats[mobData.color]) {
+                sharedMats[mobData.color] = new THREE.MeshStandardMaterial({ color: mobData.color });
+            }
+            const mat = sharedMats[mobData.color];
+            
+            const s = mobData.size / 3; 
 
-        // 2. Head
-        const headGeo = mobData.type === 'boss' ? new THREE.DodecahedronGeometry(1) : new THREE.BoxGeometry(1, 1, 1);
-        const head = new THREE.Mesh(headGeo, mat);
-        head.scale.set(s*1.2, s*1.2, s*1.2);
-        head.position.y = (s * 2.5) + (s * 1.5);
-        mobGroup.add(head);
+            // 1. Torso (Using shared geometry)
+            const torso = new THREE.Mesh(sharedGeo.box, mat);
+            torso.scale.set(s*1.5, s*2.5, s); 
+            torso.position.y = s * 2.5;
+            mobGroup.add(torso);
 
-        // 3. Arms
-        const armGeo = new THREE.BoxGeometry(1, 1, 1);
-        const rArm = new THREE.Mesh(armGeo, mat);
-        rArm.scale.set(s*0.6, s*2, s*0.6);
-        rArm.position.set(s*1.1, s*2.5, 0);
-        mobGroup.add(rArm);
-        mobGroup.rArm = rArm; 
+            // 2. Head (Using shared geometry)
+            const headGeo = mobData.type === 'boss' ? sharedGeo.bossHead : sharedGeo.box;
+            const head = new THREE.Mesh(headGeo, mat);
+            head.scale.set(s*1.2, s*1.2, s*1.2);
+            head.position.y = (s * 2.5) + (s * 1.5);
+            mobGroup.add(head);
 
-        const lArm = new THREE.Mesh(armGeo, mat);
-        lArm.scale.set(s*0.6, s*2, s*0.6);
-        lArm.position.set(-s*1.1, s*2.5, 0);
-        mobGroup.add(lArm);
+            // 3. Arms (Using shared geometry)
+            const rArm = new THREE.Mesh(sharedGeo.box, mat);
+            rArm.scale.set(s*0.6, s*2, s*0.6);
+            rArm.position.set(s*1.1, s*2.5, 0);
+            mobGroup.add(rArm);
+            mobGroup.rArm = rArm; 
 
-        // 4. Crystals
-        if (['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name) || mobData.type === 'boss') {
-            const crystalGeo = new THREE.OctahedronGeometry(1);
-            const crystalMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-            const crystal = new THREE.Mesh(crystalGeo, crystalMat);
-            crystal.scale.set(s*0.5, s*0.5, s*0.5);
-            crystal.position.y = (s * 2.5) + (s * 3);
-            mobGroup.add(crystal);
+            const lArm = new THREE.Mesh(sharedGeo.box, mat);
+            lArm.scale.set(s*0.6, s*2, s*0.6);
+            lArm.position.set(-s*1.1, s*2.5, 0);
+            mobGroup.add(lArm);
+
+            // 4. Crystals (Using shared geometry)
+            if (['Spitter', 'Wisp', 'Storm Cloud', 'Wraith', 'Fire Bat'].includes(mobData.name) || mobData.type === 'boss') {
+                if (!sharedMats['crystal']) sharedMats['crystal'] = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                const crystal = new THREE.Mesh(sharedGeo.crystal, sharedMats['crystal']);
+                crystal.scale.set(s*0.5, s*0.5, s*0.5);
+                crystal.position.y = (s * 2.5) + (s * 3);
+                mobGroup.add(crystal);
+            }
+
+            return mobGroup;
         }
-
-        return mobGroup;
-    }
 
     // Original UI Generator (Every mob gets their own canvas immediately)
     function createMobUI(name, maxHp) {
@@ -2246,6 +2257,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
