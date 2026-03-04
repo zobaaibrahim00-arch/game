@@ -948,7 +948,7 @@ const biomeData = {
         // Make sure we are locked into the game before swinging
         if (document.pointerLockElement !== document.body) return; 
 
-    // --- UPGRADED: Lazy-Load Damage System ---
+        // --- UPGRADED: Lazy-Load Damage System ---
         for (let i = enemies.length - 1; i >= 0; i--) {
             const enemy = enemies[i];
             
@@ -985,41 +985,43 @@ const biomeData = {
                         const pushback = new THREE.Vector3(dx, 0, dz).normalize();
                         enemy.mesh.position.addScaledVector(pushback, 2);
                         
-                   } else if (enemy.hp <= 0) {
+                    } else if (enemy.hp <= 0) {
                         // --- TEMPORARY DEATH & RESPAWN TIMER ---
                         enemy.active = false;
-                        enemy.mesh.visible = false; // Hide the body
-                        if (enemy.ui) enemy.ui.sprite.visible = false; // Hide the health bar
+                        enemy.mesh.visible = false; 
+                        if (enemy.ui) enemy.ui.sprite.visible = false; 
                         
                         window.gainExp(enemy.exp); 
-                        console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
                         
-                        // Set wait time: Boss = 4 mins (240k ms), Mob = 20 secs (20k ms)
+                        // NEW: CONSOLE LOGS FOR DEATH
+                        console.log(`💀 Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
+                        
                         let waitTime = enemy.type === "boss" ? 240000 : 20000;
+                        console.log(`⏱️ ${enemy.name} respawning in ${waitTime / 1000} seconds...`);
                         
                         setTimeout(() => {
-                            enemy.hp = enemy.maxHp; // Reset health
-                            enemy.mesh.position.set(enemy.spawnPos.x, enemy.spawnPos.y, enemy.spawnPos.z); // Go back to start
+                            enemy.hp = enemy.maxHp; 
+                            enemy.mesh.position.set(enemy.spawnPos.x, enemy.spawnPos.y, enemy.spawnPos.z);
                             
-                            // Turn them back on
                             enemy.mesh.visible = true; 
                             enemy.active = true;
                             
-                            // Redraw and show the health bar
                             if (enemy.ui) {
                                 enemy.ui.sprite.visible = true;
                                 drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
                                 enemy.ui.texture.needsUpdate = true;
                             }
+                            
+                            // NEW: CONSOLE LOG FOR RESPAWN
+                            console.log(`✨ ${enemy.name} has respawned!`);
                         }, waitTime);
                     }
                     
                    break; 
                 }
             }
-        } // This closes the 'for' loop
-    });   // This closes the 'mousedown' listener (DELETE THE EXTRA ONE BELOW THIS)
-
+        } 
+    });
     document.addEventListener('keyup', onKeyUp);
 
     // 8. Renderer Setup
@@ -2279,6 +2281,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
