@@ -985,15 +985,33 @@ const biomeData = {
                         const pushback = new THREE.Vector3(dx, 0, dz).normalize();
                         enemy.mesh.position.addScaledVector(pushback, 2);
                         
-                    } else if (enemy.hp <= 0) {
-                        // --- THEY DIED PERMANENTLY! ---
-                        scene.remove(enemy.mesh);
+                   } else if (enemy.hp <= 0) {
+                        // --- TEMPORARY DEATH & RESPAWN TIMER ---
                         enemy.active = false;
+                        enemy.mesh.visible = false; // Hide the body
+                        if (enemy.ui) enemy.ui.sprite.visible = false; // Hide the health bar
                         
                         window.gainExp(enemy.exp); 
                         console.log(`Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
                         
-                        enemies.splice(i, 1);
+                        // Set wait time: Boss = 4 mins (240k ms), Mob = 20 secs (20k ms)
+                        let waitTime = enemy.type === "boss" ? 240000 : 20000;
+                        
+                        setTimeout(() => {
+                            enemy.hp = enemy.maxHp; // Reset health
+                            enemy.mesh.position.set(enemy.spawnPos.x, enemy.spawnPos.y, enemy.spawnPos.z); // Go back to start
+                            
+                            // Turn them back on
+                            enemy.mesh.visible = true; 
+                            enemy.active = true;
+                            
+                            // Redraw and show the health bar
+                            if (enemy.ui) {
+                                enemy.ui.sprite.visible = true;
+                                drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                                enemy.ui.texture.needsUpdate = true;
+                            }
+                        }, waitTime);
                     }
                     
                    break; 
@@ -1517,7 +1535,8 @@ function generateEnvironment() {
             enemies.push({ 
                 ...biome.boss, 
                 mesh: bossMesh, 
-                type: "boss", 
+                spawnPos: { x: biome.center.x, y: 0, z: biome.center.z }, // <-- NEW
+                type: "boss",
                 active: true, 
                 hp: biome.boss.hp,       
                 maxHp: biome.boss.hp,    
@@ -1549,7 +1568,8 @@ function generateEnvironment() {
                     enemies.push({ 
                         ...mobData, 
                         mesh: mobMesh, 
-                        type: "mob", 
+                        spawnPos: { x: x, y: 0, z: z }, // <-- NEW
+                        type: "mob",
                         active: true,
                         hp: mobData.hp,       
                         maxHp: mobData.hp,    
@@ -2259,6 +2279,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
