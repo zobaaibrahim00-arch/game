@@ -1546,8 +1546,8 @@ function generateEnvironment() {
                 attackType: "mage",
                 speed: 0.6,
                 damage: 50,
-                agroRange: 300,
-                attackRange: 40,
+                agroRange: 150, // Cut in half (was 300)
+                attackRange: biome.boss.size * 2, // Double their reach
                 cooldown: 0
             });
 
@@ -1579,8 +1579,8 @@ function generateEnvironment() {
                         attackType: isRanged ? "ranged" : "melee",
                         speed: 0.3 + (Math.random() * 0.2), 
                         damage: Math.floor(mobData.hp / 4) + 2, 
-                        agroRange: 150,
-                        attackRange: isRanged ? 60 : (mobData.size * 2 + 5), 
+                        agroRange: 75, // Cut in half (was 150)
+                        attackRange: isRanged ? 60 : (mobData.size * 2), // Exactly double their size, no extra phantom reach
                         cooldown: 0
                     });
                 }
@@ -2288,6 +2288,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
