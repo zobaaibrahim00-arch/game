@@ -1745,6 +1745,13 @@ let eruptionCooldown = 0;
         // --- RADIUS OPTIMIZER (CULLING) ---
         if (player) {
             enemies.forEach(enemy => {
+                // CRITICAL FIX: If they are dead, force them to stay hidden and skip the distance check!
+                if (enemy.hp <= 0) {
+                    enemy.mesh.visible = false;
+                    enemy.active = false;
+                    return; 
+                }
+
                 // Calculate distance from player to enemy
                 const dx = player.position.x - enemy.mesh.position.x;
                 const dz = player.position.z - enemy.mesh.position.z;
@@ -2281,6 +2288,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
