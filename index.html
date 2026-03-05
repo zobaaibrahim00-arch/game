@@ -243,9 +243,9 @@
     <div id="tab-inventory" class="tab-content" style="display: none;">
         <h2>Inventory</h2>
         <div class="inv-categories">
-            <button>Materials</button>
-            <button>Armor</button>
-            <button>Weapons</button>
+            <button onclick="window.switchInvCategory('material')">Materials</button>
+            <button onclick="window.switchInvCategory('armor')">Armor</button>
+            <button onclick="window.switchInvCategory('weapon')">Weapons</button>
         </div>
         <div class="inv-items">
             <p>Your inventory is empty.</p>
@@ -510,24 +510,40 @@ document.addEventListener('keydown', (event) => {
         let isAdminFlying = false;
         let isBoosting = false;
 
-      // --- INVENTORY SYSTEM ---
+    // --- INVENTORY & DEFENSE SYSTEM ---
+      let currentInvCategory = 'weapon'; // Default tab
+      let totalDefense = 0; // Armor defense
+
+      window.switchInvCategory = function(category) {
+          currentInvCategory = category;
+          window.updateInventoryUI();
+      };
+
       window.getDefaultItems = function() {
-          // Grant the default items when the game starts
-          inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false });
+          // Now it correctly has a 'qty' and is forced into the 'weapon' type
+          inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false, qty: 1 });
           window.updateInventoryUI();
       };
 
       window.updateInventoryUI = function() {
           const invContainer = document.querySelector('.inv-items');
-          if (inventory.length === 0) {
-              invContainer.innerHTML = '<p>Your inventory is empty.</p>';
+          
+          // Filter out only the items that match the tab you clicked
+          const filteredItems = inventory.filter(item => item.type === currentInvCategory);
+
+          if (filteredItems.length === 0) {
+              invContainer.innerHTML = `<p>No ${currentInvCategory}s in inventory.</p>`;
               return;
           }
+
           let html = '';
-          inventory.forEach((item, index) => {
+          filteredItems.forEach((item) => {
+              // Find its real index in the main inventory array
+              const realIndex = inventory.indexOf(item); 
+              
               html += `<div style="display:flex; justify-content:space-between; background:#222; padding:5px; border:1px solid #444; margin-bottom: 5px;">
-                  <span>${item.name}</span>
-                  <button onclick="equipItem(${index})" style="cursor:pointer; background:#00aaff; color:white; border:none; border-radius:3px;">
+                  <span>${item.name} (x${item.qty}) ${item.defense ? '[+'+item.defense+' Def]' : ''}</span>
+                  <button onclick="equipItem(${realIndex})" style="cursor:pointer; background:#00aaff; color:white; border:none; border-radius:3px; display: ${item.type === 'material' ? 'none' : 'block'}">
                       ${item.equipped ? 'Equipped' : 'Equip'}
                   </button>
               </div>`;
@@ -537,19 +553,29 @@ document.addEventListener('keydown', (event) => {
 
       window.equipItem = function(index) {
           const item = inventory[index];
-          if (item.id === 'wooden_sword') {
+          
+          // Handle Weapons
+          if (item.type === 'weapon') {
+              inventory.forEach(i => if(i.type === 'weapon') i.equipped = false); // Unequip other weapons
               item.equipped = true;
               hasSwordEquipped = true;
-              sfx.click();
               
-              // Update Hotbar
               const slot = document.getElementById('slot-1');
               slot.style.borderColor = '#00aaff';
               slot.style.color = 'white';
-              slot.innerText = '1: Sword';
-              
-              window.updateInventoryUI(); // Refresh the button to say "Equipped"
+              slot.innerText = `1: ${item.name}`;
           }
+          
+          // Handle Armor
+          if (item.type === 'armor') {
+              inventory.forEach(i => if(i.type === 'armor') i.equipped = false); // Unequip other armor
+              item.equipped = true;
+              totalDefense = item.defense || 0; // Apply the defense stat!
+              console.log(`Equipped ${item.name}! Defense is now ${totalDefense}`);
+          }
+
+          sfx.click();
+          window.updateInventoryUI(); 
       };
 
       // --- LEVELING & STATS SYSTEM ---
@@ -995,6 +1021,208 @@ const biomeData = {
                         
                         // NEW: CONSOLE LOGS FOR DEATH
                         console.log(`💀 Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
+
+                      // --- 93-ITEM TIERED LOOT DROP SYSTEM ---
+                        
+                        // 1. Global Drops
+                        const globalDrops = ["Small Health Vial", "Mana Shard", "Gold Coin"];
+                        
+                        // 2. Mob Equipment (By Rank: 1=Lowest, 5=Highest)
+                        const rankEquipment = [
+                            { name: "Rusty Sword", type: "weapon", defense: 2, slot: "weapon" },
+                            { name: "Leather Chestplate", type: "armor", defense: 4, slot: "chestplate" },
+                            { name: "Chainmail Leggings", type: "armor", defense: 3, slot: "leggings" },
+                            { name: "Iron Helmet", type: "armor", defense: 3, slot: "helmet" },
+                            { name: "Steel Boots", type: "armor", defense: 2, slot: "boots" }
+                        ];
+
+                        // 3. Biome Master Dictionary (Shared, Unique, Colors, and Boss Drops)
+                        const biomeLoot = {
+                            forest: {
+                                color: 0x228b22,
+                                shared: ["Oak Branch", "Forest Herb"],
+                                unique: ["Sticky Gel", "Broken Dagger", "Venom Gland", "Living Root", "Stone Wing"],
+                                boss: {
+                                    upgraded: "Ancient Life Seed",
+                                    mats: ["Heart of Oak", "Vines", "Moss", "Amber"],
+                                    set: [
+                                        { name: "Guardian Blade", type: "weapon", slot: "weapon", defense: 10 },
+                                        { name: "Bark Plate", type: "armor", slot: "chestplate", defense: 15 },
+                                        { name: "Root Greaves", type: "armor", slot: "leggings", defense: 12 },
+                                        { name: "Leaf Crown", type: "armor", slot: "helmet", defense: 10 },
+                                        { name: "Mossy Treads", type: "armor", slot: "boots", defense: 8 }
+                                    ]
+                                }
+                            },
+                            earth: {
+                                color: 0x8b4513,
+                                shared: ["Rough Stone", "Brown Clay"],
+                                unique: ["Hardened Shell", "Quartz Pebble", "Sandstone Tooth", "Core Fragment", "Compressed Dirt"],
+                                boss: {
+                                    upgraded: "Diamond Core",
+                                    mats: ["Granite Slab", "Iron Ore", "Fossil", "Geode"],
+                                    set: [
+                                        { name: "Titan Smasher", type: "weapon", slot: "weapon", defense: 12 },
+                                        { name: "Plate Mail", type: "armor", slot: "chestplate", defense: 18 },
+                                        { name: "Rock Guards", type: "armor", slot: "leggings", defense: 14 },
+                                        { name: "Golem Head", type: "armor", slot: "helmet", defense: 12 },
+                                        { name: "Heavy Stompers", type: "armor", slot: "boots", defense: 10 }
+                                    ]
+                                }
+                            },
+                            sky: {
+                                color: 0x87cefa,
+                                shared: ["Blue Feather", "Cloud Vapor"],
+                                unique: ["Ethereal Glow", "Sharp Talon", "Wind Sac", "Static Bolt", "Hurricane Eye"],
+                                boss: {
+                                    upgraded: "Star Fragment",
+                                    mats: ["Pure Silver", "Lightning Tail", "Scaled Wing", "Beak"],
+                                    set: [
+                                        { name: "Sky Piercer", type: "weapon", slot: "weapon", defense: 11 },
+                                        { name: "Cloud Mail", type: "armor", slot: "chestplate", defense: 14 },
+                                        { name: "Gale Skirt", type: "armor", slot: "leggings", defense: 11 },
+                                        { name: "Aviator Helm", type: "armor", slot: "helmet", defense: 9 },
+                                        { name: "Winged Boots", type: "armor", slot: "boots", defense: 8 }
+                                    ]
+                                }
+                            },
+                            darkness: {
+                                color: 0x4b0082,
+                                shared: ["Shadow Dust", "Bone Fragment"],
+                                unique: ["Dark Essence", "Cracked Rib", "Ghostly Fabric", "Abyssal Eye", "Soul Fragment"],
+                                boss: {
+                                    upgraded: "Black Diamond",
+                                    mats: ["Cursed Skull", "Grave Dirt", "Tome Page", "Onyx"],
+                                    set: [
+                                        { name: "Soul Reaper", type: "weapon", slot: "weapon", defense: 13 },
+                                        { name: "Lich Robe", type: "armor", slot: "chestplate", defense: 16 },
+                                        { name: "Wraith Legs", type: "armor", slot: "leggings", defense: 13 },
+                                        { name: "Skull Mask", type: "armor", slot: "helmet", defense: 11 },
+                                        { name: "Ghost Steps", type: "armor", slot: "boots", defense: 9 }
+                                    ]
+                                }
+                            },
+                            volcano: {
+                                color: 0xff4500,
+                                shared: ["Magma Cream", "Sulfur"],
+                                unique: ["Scorched Wing", "Lava Glob", "Cinder Pile", "Flaming Fang", "Obsidian Chunk"],
+                                boss: {
+                                    upgraded: "Eternal Flame",
+                                    mats: ["Hellfire Steel", "Horn Tip", "Brimstone", "Ruby"],
+                                    set: [
+                                        { name: "Demon Slayer", type: "weapon", slot: "weapon", defense: 15 },
+                                        { name: "Lava Plate", type: "armor", slot: "chestplate", defense: 20 },
+                                        { name: "Scorched Guards", type: "armor", slot: "leggings", defense: 15 },
+                                        { name: "Horned Helm", type: "armor", slot: "helmet", defense: 13 },
+                                        { name: "Fire Walkers", type: "armor", slot: "boots", defense: 11 }
+                                    ]
+                                }
+                            }
+                        };
+
+                        // Helper function to push items safely
+                        function grantItem(name, type, qty = 1, defense = 0, slot = "", color = 0xffffff) {
+                            if (type === 'material') {
+                                let existing = inventory.find(i => i.name === name);
+                                if (existing) existing.qty += qty;
+                                else inventory.push({ id: name.toLowerCase().replace(/ /g, '_'), name: name, type: 'material', qty: qty });
+                            } else {
+                                // Armor and Weapons don't stack, but check if we already own it!
+                                if (!inventory.find(i => i.name === name)) {
+                                    inventory.push({ 
+                                        id: name.toLowerCase().replace(/ /g, '_'), 
+                                        name: name, 
+                                        type: type, 
+                                        qty: 1, 
+                                        defense: defense, 
+                                        armorSlot: slot, 
+                                        color: color,
+                                        equipped: false
+                                    });
+                                }
+                            }
+                        }
+
+                        // --- INDEPENDENT SLOT ROLLING LOGIC ---
+                        
+                        let bData = biomeLoot[enemy.biome] || biomeLoot.forest; 
+                        let droppedItems = 0;
+
+                        // Separate the globals based on your new rarity table
+                        const globalCommon = ["Small Health Vial", "Mana Shard"];
+
+                        // --- REGULAR MOB ROLLS (5 SLOTS) ---
+                        if (enemy.type !== "boss") {
+                            // Slot 1: Global Common (60%)
+                            if (Math.random() < 0.60) {
+                                grantItem(globalCommon[Math.floor(Math.random() * globalCommon.length)], "material");
+                                droppedItems++;
+                            }
+                            // Slot 2: Global Uncommon / Gold (25%)
+                            if (Math.random() < 0.25) {
+                                grantItem("Gold Coin", "material");
+                                droppedItems++;
+                            }
+                            // Slot 3: Shared Biome Drop (15%)
+                            if (Math.random() < 0.15) {
+                                grantItem(bData.shared[Math.floor(Math.random() * bData.shared.length)], "material");
+                                droppedItems++;
+                            }
+                            // Slot 4: Unique Mob Drop (8%)
+                            if (Math.random() < 0.08) {
+                                grantItem(bData.unique[enemy.rank - 1], "material");
+                                droppedItems++;
+                            }
+                            // Slot 5: Mob Equipment (3%)
+                            if (Math.random() < 0.03) {
+                                let equip = rankEquipment[enemy.rank - 1];
+                                grantItem(equip.name, equip.type, 1, equip.defense, equip.slot, bData.color);
+                                droppedItems++;
+                            }
+                        } 
+                        
+                        // --- BOSS MOB ROLLS (10 SLOTS) ---
+                        else if (enemy.type === "boss") {
+                            // Slot 1: Guaranteed Upgraded Item (100%)
+                            grantItem(bData.boss.upgraded, "material");
+                            droppedItems++;
+                            
+                            // Slots 2-5: Boss Materials (40% independent chance for EACH material)
+                            bData.boss.mats.forEach(mat => {
+                                if (Math.random() < 0.40) {
+                                    grantItem(mat, "material");
+                                    droppedItems++;
+                                }
+                            });
+                            
+                            // Slots 6-10: Boss Set Pieces (Scaling Rarity)
+                            const bossSetChances = {
+                                "weapon": 0.10,      // 10% Sword
+                                "chestplate": 0.15,  // 15% Chest
+                                "leggings": 0.20,    // 20% Legs
+                                "helmet": 0.25,      // 25% Helm
+                                "boots": 0.30        // 30% Boots
+                            };
+
+                            bData.boss.set.forEach(piece => {
+                                // Roll independently for every single armor piece!
+                                if (Math.random() < bossSetChances[piece.slot]) {
+                                    grantItem(piece.name, piece.type, 1, piece.defense, piece.slot, bData.color);
+                                    droppedItems++;
+                                }
+                            });
+                        }
+
+                        // Announce the loot
+                        if (droppedItems > 0) {
+                            // If they hit the 0.0054% jackpot, make it a big deal!
+                            if (enemy.type !== "boss" && droppedItems === 5) {
+                                console.log(`🌟 JACKPOT! You got all 5 drops from ${enemy.name}!`);
+                            } else {
+                                console.log(`💎 Dropped ${droppedItems} item(s)! Check inventory.`);
+                            }
+                            window.updateInventoryUI();
+                        }
                         
                         let waitTime = enemy.type === "boss" ? 240000 : 20000;
                         console.log(`⏱️ ${enemy.name} respawning in ${waitTime / 1000} seconds...`);
@@ -1539,6 +1767,7 @@ function generateEnvironment() {
                 mesh: bossMesh, 
                 spawnPos: { x: biome.center.x, y: 0, z: biome.center.z }, // <-- NEW
                 type: "boss",
+                biome: biomeName,
                 active: true, 
                 hp: biome.boss.hp,       
                 maxHp: biome.boss.hp,    
@@ -1552,7 +1781,7 @@ function generateEnvironment() {
             });
 
             // 2. Spawn 30 normal mobs
-            biome.mobs.forEach(mobData => {
+           biome.mobs.forEach((mobData, rankIndex) => { // <-- Added rankIndex
                 for (let i = 0; i < 30; i++) {
                     const radius = biome.spawn.minR + Math.random() * (biome.spawn.maxR - biome.spawn.minR);
                     const angle = biome.spawn.startA + Math.random() * (biome.spawn.endA - biome.spawn.startA);
@@ -1572,6 +1801,8 @@ function generateEnvironment() {
                         mesh: mobMesh, 
                         spawnPos: { x: x, y: 0, z: z }, // <-- NEW
                         type: "mob",
+                        rank: rankIndex + 1, // <-- NEW: Ranks 1 through 5
+                        biome: biomeName,    // <-- NEW
                         active: true,
                         hp: mobData.hp,       
                         maxHp: mobData.hp,    
@@ -1705,6 +1936,56 @@ let eruptionCooldown = 0;
         player.rArm.add(swordGroup); 
         window.swordMesh = swordGroup;
 
+// --- PLACEHOLDER ARMOR MESHES ---
+        // These sit slightly outside the body and are invisible until equipped!
+        const armorMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0 }); 
+        
+        player.armorMeshes = {
+            helmet: new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.05, 32), armorMat.clone()),
+            chestplate: new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.1, 1.1), armorMat.clone()),
+            leggingsL: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16), armorMat.clone()),
+            leggingsR: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16), armorMat.clone()),
+            bootsL: new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), armorMat.clone()),
+            bootsR: new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), armorMat.clone())
+        };
+
+        // Attach them so they animate with the body!
+        head.add(player.armorMeshes.helmet);
+        torso.add(player.armorMeshes.chestplate);
+        
+        player.lLeg.add(player.armorMeshes.leggingsL);
+        player.rLeg.add(player.armorMeshes.leggingsR);
+        
+        // Push boots down to the feet
+        player.armorMeshes.bootsL.position.y = -2.0; 
+        player.armorMeshes.bootsR.position.y = -2.0;
+        player.lLeg.add(player.armorMeshes.bootsL);
+        player.rLeg.add(player.armorMeshes.bootsR);
+
+        // Helper function to turn them on and color them
+        window.updateArmorVisuals = function(slot, hexColor, isEquipped) {
+            const matColor = new THREE.Color(hexColor);
+            const opacity = isEquipped ? 1 : 0;
+            
+            if (slot === 'helmet') {
+                player.armorMeshes.helmet.material.opacity = opacity;
+                player.armorMeshes.helmet.material.color = matColor;
+            } else if (slot === 'chestplate') {
+                player.armorMeshes.chestplate.material.opacity = opacity;
+                player.armorMeshes.chestplate.material.color = matColor;
+            } else if (slot === 'leggings') {
+                player.armorMeshes.leggingsL.material.opacity = opacity;
+                player.armorMeshes.leggingsL.material.color = matColor;
+                player.armorMeshes.leggingsR.material.opacity = opacity;
+                player.armorMeshes.leggingsR.material.color = matColor;
+            } else if (slot === 'boots') {
+                player.armorMeshes.bootsL.material.opacity = opacity;
+                player.armorMeshes.bootsL.material.color = matColor;
+                player.armorMeshes.bootsR.material.opacity = opacity;
+                player.armorMeshes.bootsR.material.color = matColor;
+            }
+        };
+     
         player.position.set(0, 10, 0);
         scene.add(player);
     }
@@ -2288,6 +2569,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
