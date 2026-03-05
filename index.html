@@ -514,104 +514,125 @@ document.addEventListener('keydown', (event) => {
       let currentInvCategory = 'weapon'; // Default tab
       let totalDefense = 0; // Armor defense
 
-      window.switchInvCategory = function(category) {
-          currentInvCategory = category;
-          window.updateInventoryUI();
-      };
+window.switchInvCategory = function(category) {
+    currentInvCategory = category;
+    window.updateInventoryUI();
+};
 
-      window.getDefaultItems = function() {
-          // Now it correctly has a 'qty' and is forced into the 'weapon' type
-          inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false, qty: 1 });
-          window.updateInventoryUI();
-      };
+window.getDefaultItems = function() {
+    inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false, qty: 1 });
+    window.updateInventoryUI();
+};
 
-      window.updateInventoryUI = function() {
-          const invContainer = document.querySelector('.inv-items');
-          
-          // Filter out only the items that match the tab you clicked
-          const filteredItems = inventory.filter(item => item.type === currentInvCategory);
+window.updateInventoryUI = function() {
+    const invContainer = document.querySelector('.inv-items');
+    if (!invContainer) return; // Safety check
+    
+    const filteredItems = inventory.filter(item => item.type === currentInvCategory);
 
-          if (filteredItems.length === 0) {
-              invContainer.innerHTML = `<p>No ${currentInvCategory}s in inventory.</p>`;
-              return;
-          }
+    if (filteredItems.length === 0) {
+        invContainer.innerHTML = `<p>No ${currentInvCategory}s in inventory.</p>`;
+        return;
+    }
 
-          let html = '';
-          filteredItems.forEach((item) => {
-              // Find its real index in the main inventory array
-              const realIndex = inventory.indexOf(item); 
-              
-              html += `<div style="display:flex; justify-content:space-between; background:#222; padding:5px; border:1px solid #444; margin-bottom: 5px;">
-                  <span>${item.name} (x${item.qty}) ${item.defense ? '[+'+item.defense+' Def]' : ''}</span>
-                  <button onclick="equipItem(${realIndex})" style="cursor:pointer; background:#00aaff; color:white; border:none; border-radius:3px; display: ${item.type === 'material' ? 'none' : 'block'}">
-                      ${item.equipped ? 'Equipped' : 'Equip'}
-                  </button>
-              </div>`;
-          });
-          invContainer.innerHTML = html;
-      };
+    let html = '';
+    filteredItems.forEach((item) => {
+        const realIndex = inventory.indexOf(item); 
+        
+        html += `<div style="display:flex; justify-content:space-between; background:#222; padding:5px; border:1px solid #444; margin-bottom: 5px;">
+            <span>${item.name} (x${item.qty}) ${item.defense ? '[+'+item.defense+' Def]' : ''}</span>
+            <button onclick="equipItem(${realIndex})" style="cursor:pointer; background:#00aaff; color:white; border:none; border-radius:3px; display: ${item.type === 'material' ? 'none' : 'block'}">
+                ${item.equipped ? 'Equipped' : 'Equip'}
+            </button>
+        </div>`;
+    });
+    invContainer.innerHTML = html;
+};
 
-      window.equipItem = function(index) {
-          const item = inventory[index];
-          
-          // Handle Weapons
-          if (item.type === 'weapon') {
-              inventory.forEach(i => if(i.type === 'weapon') i.equipped = false); // Unequip other weapons
-              item.equipped = true;
-              hasSwordEquipped = true;
-              
-              const slot = document.getElementById('slot-1');
-              slot.style.borderColor = '#00aaff';
-              slot.style.color = 'white';
-              slot.innerText = `1: ${item.name}`;
-          }
-          
-          // Handle Armor
-          if (item.type === 'armor') {
-              inventory.forEach(i => if(i.type === 'armor') i.equipped = false); // Unequip other armor
-              item.equipped = true;
-              totalDefense = item.defense || 0; // Apply the defense stat!
-              console.log(`Equipped ${item.name}! Defense is now ${totalDefense}`);
-          }
+window.equipItem = function(index) {
+    const item = inventory[index];
+    
+    // Handle Weapons
+    if (item.type === 'weapon') {
+        inventory.forEach(i => { if (i.type === 'weapon') i.equipped = false; }); // Fixed Syntax!
+        item.equipped = true;
+        hasSwordEquipped = true;
+        
+        const slot = document.getElementById('slot-1');
+        if (slot) {
+            slot.style.borderColor = '#00aaff';
+            slot.style.color = 'white';
+            slot.innerText = `1: ${item.name}`;
+        }
+    }
+    
+    // Handle Armor
+    if (item.type === 'armor') {
+        inventory.forEach(i => { if (i.type === 'armor') i.equipped = false; }); // Fixed Syntax!
+        item.equipped = true;
+        totalDefense = item.defense || 0; 
+        console.log(`Equipped ${item.name}! Defense is now ${totalDefense}`);
+    }
 
-          sfx.click();
-          window.updateInventoryUI(); 
-      };
+    if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
+    window.updateInventoryUI(); 
+};
 
-      // --- LEVELING & STATS SYSTEM ---
-      // Leveling Formula: Lvl 1->2 is 80 EXP, then scales using 1.73 * L^1.726
-      function getExpRequired(lvl) {
-          if (lvl === 1) return 80; 
-          return Math.floor(80 * (1.73 * Math.pow(lvl, 1.726)) / 1.73);
-      }
-      maxXp = getExpRequired(level);
+// --- LEVELING & STATS SYSTEM ---
+function getExpRequired(lvl) {
+    if (lvl === 1) return 80; 
+    return Math.floor(80 * (1.73 * Math.pow(lvl, 1.726)) / 1.73);
+}
 
-      window.gainExp = function(amount) {
-          currentXp += amount;
-          while (currentXp >= maxXp) {
-              currentXp -= maxXp;
-              level++;
-              statPoints += 3;
-              maxXp = getExpRequired(level);
-              
-              currentHp = maxHp; // Full Heal on level up
-              currentMana = maxMana;
-              
-              document.getElementById('stat-points').innerText = statPoints;
-          }
-      };
+// Make sure 'level' is defined globally before this line!
+maxXp = getExpRequired(level);
 
-      window.upgradeStat = function(stat) {
-          if (statPoints > 0) {
-              statPoints--;
-              sfx.click();
-              if (stat === 'hp') { maxHp += 10; currentHp += 10; document.getElementById('stat-hp').innerText = maxHp; }
-              if (stat === 'mana') { maxMana += 10; currentMana += 10; document.getElementById('stat-mana').innerText = maxMana; }
-              if (stat === 'attack') { attackStat += 2; document.getElementById('stat-attack').innerText = attackStat; }
-              if (stat === 'speed') { speedStat += 1; document.getElementById('stat-speed').innerText = speedStat; }
-              document.getElementById('stat-points').innerText = statPoints;
-          }
-      };
+window.gainExp = function(amount) {
+    currentXp += amount;
+    while (currentXp >= maxXp) {
+        currentXp -= maxXp;
+        level++;
+        statPoints += 3;
+        maxXp = getExpRequired(level);
+        
+        currentHp = maxHp; 
+        currentMana = maxMana;
+        
+        const statPointsEl = document.getElementById('stat-points');
+        if (statPointsEl) statPointsEl.innerText = statPoints;
+    }
+};
+
+window.upgradeStat = function(stat) {
+    if (statPoints > 0) {
+        statPoints--;
+        if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
+        
+        if (stat === 'hp') { 
+            maxHp += 10; currentHp += 10; 
+            const el = document.getElementById('stat-hp');
+            if (el) el.innerText = maxHp; 
+        }
+        if (stat === 'mana') { 
+            maxMana += 10; currentMana += 10; 
+            const el = document.getElementById('stat-mana');
+            if (el) el.innerText = maxMana; 
+        }
+        if (stat === 'attack') { 
+            attackStat += 2; 
+            const el = document.getElementById('stat-attack');
+            if (el) el.innerText = attackStat; 
+        }
+        if (stat === 'speed') { 
+            speedStat += 1; 
+            const el = document.getElementById('stat-speed');
+            if (el) el.innerText = speedStat; 
+        }
+        
+        const statPointsEl = document.getElementById('stat-points');
+        if (statPointsEl) statPointsEl.innerText = statPoints;
+    }
+};
 
       // --- DUMMY SPAWNER ---
       window.summonDummy = function(levelsToGive) {
@@ -2569,6 +2590,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
