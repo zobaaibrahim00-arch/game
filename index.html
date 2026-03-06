@@ -9,14 +9,30 @@
 
 
   #hotbar {
-        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
-        display: flex; gap: 8px; z-index: 100;
-      }
-      .hotbar-slot {
-        width: 60px; height: 60px; background: rgba(0, 0, 0, 0.7); 
-        border: 2px solid #555; border-radius: 5px; color: white; 
-        position: relative; cursor: pointer; transition: all 0.1s; box-sizing: border-box;
-      }
+    position: absolute; 
+    bottom: 20px; 
+    left: 50%; 
+    transform: translateX(-50%); /* This is the magic centering trick */
+    display: flex; 
+    gap: 8px; 
+    z-index: 9999; /* Forces it to sit on top of everything */
+    margin: 0;
+    padding: 0;
+}
+
+.hotbar-slot {
+    width: 60px; 
+    height: 60px; 
+    background: rgba(0, 0, 0, 0.7); 
+    border: 2px solid #555; 
+    border-radius: 5px; 
+    color: white; 
+    position: relative; 
+    cursor: pointer; 
+    transition: all 0.1s; 
+    box-sizing: border-box;
+    pointer-events: auto; /* Ensures you can click them */
+}
       /* THE SYSTEM UI CONTAINER - Positioned Bottom Left */
       #system-ui {
         position: absolute; 
@@ -204,13 +220,13 @@
         <span>LVL <span id="level-val">1</span></span>
       </div>
 
-      <div id="hotbar" style="position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; pointer-events: none;">
-        <div class="hotbar-slot" id="hotbar-0" style="pointer-events: auto;"></div>
-        <div class="hotbar-slot" id="hotbar-1" style="pointer-events: auto;"></div>
-        <div class="hotbar-slot" id="hotbar-2" style="pointer-events: auto;"></div>
-        <div class="hotbar-slot" id="hotbar-3" style="pointer-events: auto;"></div>
-        <div class="hotbar-slot" id="hotbar-4" style="pointer-events: auto;"></div>
-    </div>
+      <div id="hotbar">
+    <div class="hotbar-slot" id="hotbar-0"></div>
+    <div class="hotbar-slot" id="hotbar-1"></div>
+    <div class="hotbar-slot" id="hotbar-2"></div>
+    <div class="hotbar-slot" id="hotbar-3"></div>
+    <div class="hotbar-slot" id="hotbar-4"></div>
+</div>
       
       <div style="font-size: 12px; margin-top: 5px;">HP <span id="hp-text" style="float:right;">100/100</span></div>
       <div class="bar-container">
@@ -2691,6 +2707,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
