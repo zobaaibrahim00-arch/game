@@ -6,7 +6,17 @@
 
 <style>
       body { margin: 0; overflow: hidden; font-family: 'Courier New', sans-serif; cursor: crosshair; }
-      
+
+
+  #hotbar {
+        position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); 
+        display: flex; gap: 8px; z-index: 100;
+      }
+      .hotbar-slot {
+        width: 60px; height: 60px; background: rgba(0, 0, 0, 0.7); 
+        border: 2px solid #555; border-radius: 5px; color: white; 
+        position: relative; cursor: pointer; transition: all 0.1s; box-sizing: border-box;
+      }
       /* THE SYSTEM UI CONTAINER - Positioned Bottom Left */
       #system-ui {
         position: absolute; 
@@ -188,14 +198,19 @@
     </div>
 <div id="white-out" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: white; opacity: 0; pointer-events: none; z-index: 9999;"></div>
 
-<div id="hotbar" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 100;">
-        <div id="slot-1" style="width: 50px; height: 50px; background: rgba(0,0,0,0.5); border: 2px solid #555; color: gray; display: flex; align-items: center; justify-content: center; font-weight: bold; border-radius: 5px;">1</div>
-    </div>
     <div id="system-ui">
       <div class="stat-row">
         <h2>STATUS</h2>
         <span>LVL <span id="level-val">1</span></span>
       </div>
+
+      <div id="hotbar">
+        <div class="hotbar-slot" id="hotbar-0"></div>
+        <div class="hotbar-slot" id="hotbar-1"></div>
+        <div class="hotbar-slot" id="hotbar-2"></div>
+        <div class="hotbar-slot" id="hotbar-3"></div>
+        <div class="hotbar-slot" id="hotbar-4"></div>
+    </div>
       
       <div style="font-size: 12px; margin-top: 5px;">HP <span id="hp-text" style="float:right;">100/100</span></div>
       <div class="bar-container">
@@ -510,6 +525,36 @@ document.addEventListener('keydown', (event) => {
         let isAdminFlying = false;
         let isBoosting = false;
 
+// --- HOTBAR SYSTEM ---
+let hotbar = [null, null, null, null, null]; 
+let activeSlot = 0; 
+
+window.updateHotbarUI = function() {
+    for(let i = 0; i < 5; i++) {
+        const slotEl = document.getElementById(`hotbar-${i}`);
+        if (!slotEl) continue;
+        
+        const item = hotbar[i];
+        let html = `<span style="position:absolute; top:2px; left:4px; font-size:12px; color:#aaa;">${i+1}</span>`;
+        
+        if (item) {
+            let shortName = item.name.replace("Small Health Vial", "HP Vial").replace("Mana Shard", "MP Shard");
+            html += `<div style="text-align:center; font-size:11px; margin-top:16px; font-weight:bold;">${shortName}<br>x${item.qty}</div>`;
+        }
+        slotEl.innerHTML = html;
+
+        if (i === activeSlot) {
+            slotEl.style.borderColor = '#00aaff';
+            slotEl.style.background = 'rgba(0, 170, 255, 0.3)';
+            slotEl.style.transform = 'scale(1.1)'; 
+        } else {
+            slotEl.style.borderColor = '#555';
+            slotEl.style.background = 'rgba(0, 0, 0, 0.7)';
+            slotEl.style.transform = 'scale(1)';
+        }
+    }
+};
+      
     // --- INVENTORY & DEFENSE SYSTEM ---
       let currentInvCategory = 'weapon'; // Default tab
       let totalDefense = 0; // Armor defense
@@ -520,8 +565,8 @@ window.switchInvCategory = function(category) {
 };
 
 window.getDefaultItems = function() {
-    inventory.push({ id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', equipped: false, qty: 1 });
-    window.updateInventoryUI();
+    hotbar[0] = { name: 'Wooden Sword', type: 'weapon', qty: 1, defense: 0 };
+    window.updateHotbarUI();
 };
 
 window.updateInventoryUI = function() {
@@ -557,13 +602,6 @@ window.equipItem = function(index) {
         inventory.forEach(i => { if (i.type === 'weapon') i.equipped = false; }); // Fixed Syntax!
         item.equipped = true;
         hasSwordEquipped = true;
-        
-        const slot = document.getElementById('slot-1');
-        if (slot) {
-            slot.style.borderColor = '#00aaff';
-            slot.style.color = 'white';
-            slot.innerText = `1: ${item.name}`;
-        }
     }
     
     // Handle Armor
@@ -807,6 +845,12 @@ const biomeData = {
             // --- NEW: If the player is typing in an input box, ignore the game controls! ---
             if (document.activeElement.tagName === 'INPUT') return;
 
+          // Switch hotbar slots with 1-5 keys
+            if (['1','2','3','4','5'].includes(event.key)) {
+                activeSlot = parseInt(event.key) - 1; 
+                window.updateHotbarUI();
+            }
+
             keysBuffer[event.code] = true;
 
             // --- INVISIBLE DEVELOPER CHEAT: ESC + Numbers + Enter ---
@@ -994,6 +1038,30 @@ const biomeData = {
         document.addEventListener('mousedown', (event) => {
         // Make sure we are locked into the game before swinging
         if (document.pointerLockElement !== document.body) return; 
+          // --- HOTBAR USAGE LOGIC ---
+        let currentItem = hotbar[activeSlot];
+
+        if (currentItem && currentItem.type === 'consumable') {
+            if (currentItem.name === "Small Health Vial") {
+                if (currentHp >= maxHp) return;
+                currentHp = Math.min(maxHp, currentHp + 50); 
+                document.getElementById('hp-text').innerText = `${currentHp}/${maxHp}`;
+                document.getElementById('hp-bar').style.width = `${(currentHp / maxHp) * 100}%`;
+            } 
+            else if (currentItem.name === "Mana Shard") {
+                if (currentMana >= maxMana) return;
+                currentMana = Math.min(maxMana, currentMana + 30); 
+                document.getElementById('mana-text').innerText = `${currentMana}/${maxMana}`;
+                document.getElementById('mana-bar').style.width = `${(currentMana / maxMana) * 100}%`;
+            }
+            
+            currentItem.qty -= 1;
+            if (currentItem.qty <= 0) hotbar[activeSlot] = null; 
+            window.updateHotbarUI();
+            return; // Drink potion, don't swing weapon!
+        }
+
+        if (!currentItem || currentItem.type !== 'weapon') return; // Must hold weapon to attack
 
         // --- UPGRADED: Lazy-Load Damage System ---
         for (let i = enemies.length - 1; i >= 0; i--) {
@@ -1143,22 +1211,32 @@ const biomeData = {
 
                         // Helper function to push items safely
                         function grantItem(name, type, qty = 1, defense = 0, slot = "", color = 0xffffff) {
+                            if (name === "Small Health Vial" || name === "Mana Shard") type = "consumable";
+
+                            if (type === 'consumable' || type === 'weapon') {
+                                let existingSlot = hotbar.find(i => i && i.name === name);
+                                if (existingSlot) {
+                                    existingSlot.qty += qty;
+                                    window.updateHotbarUI();
+                                    return; 
+                                }
+                                let emptyIndex = hotbar.findIndex(i => i === null);
+                                if (emptyIndex !== -1) {
+                                    hotbar[emptyIndex] = { name, type, qty, defense, slot, color };
+                                    window.updateHotbarUI();
+                                    return; 
+                                }
+                            }
+
                             if (type === 'material') {
                                 let existing = inventory.find(i => i.name === name);
                                 if (existing) existing.qty += qty;
                                 else inventory.push({ id: name.toLowerCase().replace(/ /g, '_'), name: name, type: 'material', qty: qty });
                             } else {
-                                // Armor and Weapons don't stack, but check if we already own it!
                                 if (!inventory.find(i => i.name === name)) {
                                     inventory.push({ 
                                         id: name.toLowerCase().replace(/ /g, '_'), 
-                                        name: name, 
-                                        type: type, 
-                                        qty: 1, 
-                                        defense: defense, 
-                                        armorSlot: slot, 
-                                        color: color,
-                                        equipped: false
+                                        name: name, type: type, qty: 1, defense: defense, armorSlot: slot, color: color, equipped: false
                                     });
                                 }
                             }
@@ -2590,6 +2668,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
