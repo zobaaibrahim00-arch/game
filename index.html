@@ -625,20 +625,53 @@ window.updateInventoryUI = function() {
 window.equipItem = function(index) {
     const item = inventory[index];
     
-    // Handle Weapons
+    // --- 1. UNEQUIP LOGIC ---
+    // If you click an item that is already equipped, it takes it off!
+    if (item.equipped) {
+        item.equipped = false;
+        
+        if (item.type === 'armor') {
+            // Turn off the 3D visual on your character
+            window.updateArmorVisuals(item.armorSlot, item.color, false);
+        }
+        
+        // Recalculate defense after taking it off
+        totalDefense = 0;
+        inventory.forEach(i => { if (i.equipped && i.defense) totalDefense += i.defense; });
+        console.log(`Unequipped ${item.name}. Total Defense is now ${totalDefense}`);
+        
+        if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
+        window.updateInventoryUI();
+        return; // Stop here!
+    }
+
+    // --- 2. EQUIP WEAPONS ---
     if (item.type === 'weapon') {
-        inventory.forEach(i => { if (i.type === 'weapon') i.equipped = false; }); // Fixed Syntax!
+        inventory.forEach(i => { if (i.type === 'weapon') i.equipped = false; }); 
         item.equipped = true;
-        hasSwordEquipped = true;
     }
     
-    // Handle Armor
+    // --- 3. EQUIP ARMOR (FULL SETS FIXED) ---
     if (item.type === 'armor') {
-        inventory.forEach(i => { if (i.type === 'armor') i.equipped = false; }); // Fixed Syntax!
+        // ONLY unequip armor that shares the exact same slot (Helmet replaces Helmet)
+        inventory.forEach(i => { 
+            if (i.type === 'armor' && i.armorSlot === item.armorSlot && i.equipped) {
+                i.equipped = false; 
+                window.updateArmorVisuals(i.armorSlot, i.color, false); // Hide old piece
+            }
+        });
+        
         item.equipped = true;
-        totalDefense = item.defense || 0; 
-        console.log(`Equipped ${item.name}! Defense is now ${totalDefense}`);
+        window.updateArmorVisuals(item.armorSlot, item.color, true); // Show new piece on character
     }
+
+    // --- 4. RECALCULATE TOTAL DEFENSE ---
+    // Add up the defense of EVERY piece of gear you are wearing
+    totalDefense = 0;
+    inventory.forEach(i => {
+        if (i.equipped && i.defense) totalDefense += i.defense;
+    });
+    console.log(`Equipped ${item.name}! Total Defense is now ${totalDefense}`);
 
     if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
     window.updateInventoryUI(); 
@@ -2707,6 +2740,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
