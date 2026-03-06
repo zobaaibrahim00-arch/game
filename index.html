@@ -1172,16 +1172,36 @@ const biomeData = {
                         const pushback = new THREE.Vector3(dx, 0, dz).normalize();
                         enemy.mesh.position.addScaledVector(pushback, 2);
                         
-                    } else if (enemy.hp <= 0) {
-                        // --- TEMPORARY DEATH & RESPAWN TIMER ---
+                  } else if (enemy.hp <= 0) {
                         enemy.active = false;
-                        enemy.mesh.visible = false; 
-                        if (enemy.ui) enemy.ui.sprite.visible = false; 
-                        
                         window.gainExp(enemy.exp); 
-                        
-                        // NEW: CONSOLE LOGS FOR DEATH
                         console.log(`💀 Defeated ${enemy.name}! Gained ${enemy.exp} EXP!`);
+
+                        if (enemy.type === "boss") {
+                            // Hide the 3D body parts, but KEEP the floating UI visible!
+                            enemy.mesh.children.forEach(child => {
+                                if (child.type !== 'Sprite') child.visible = false;
+                            });
+                            enemy.isRespawning = true;
+                            enemy.respawnTimer = 240; // 4 minutes (240 seconds)
+                        } else {
+                            // Normal mobs just vanish completely
+                            enemy.mesh.visible = false; 
+                            if (enemy.ui) enemy.ui.sprite.visible = false; 
+                            
+                            // Normal mob respawn timer (20 seconds)
+                            setTimeout(() => {
+                                enemy.hp = enemy.maxHp; 
+                                enemy.mesh.position.set(enemy.spawnPos.x, enemy.spawnPos.y, enemy.spawnPos.z);
+                                enemy.mesh.visible = true; 
+                                enemy.active = true;
+                                if (enemy.ui) {
+                                    enemy.ui.sprite.visible = true;
+                                    drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                                    enemy.ui.texture.needsUpdate = true;
+                                }
+                            }, 20000);
+                        }
 
                       // --- 93-ITEM TIERED LOOT DROP SYSTEM ---
                         
@@ -1846,6 +1866,24 @@ function generateEnvironment() {
         ctx.fillText(`${Math.floor(currentHp)} / ${maxHp}`, 128, 66);
     }
 
+      function drawTimerBar(ctx, timeLeft) {
+        ctx.clearRect(0, 0, 256, 128);
+        ctx.fillStyle = '#ffaa00';
+        ctx.font = 'bold 20px Courier New';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = 4;
+        ctx.fillText("BOSS RESPAWNS IN", 128, 50);
+        
+        ctx.font = 'bold 36px Courier New';
+        ctx.fillStyle = 'white';
+        // Convert seconds into Minutes:Seconds format
+        let m = Math.floor(timeLeft / 60);
+        let s = Math.floor(timeLeft % 60);
+        ctx.fillText(`${m}:${s < 10 ? '0' : ''}${s}`, 128, 90);
+        ctx.shadowBlur = 0; 
+    }
+
     // --- MEMORY OPTIMIZATION CACHE ---
         const sharedGeo = {
             box: new THREE.BoxGeometry(1, 1, 1),
@@ -2114,8 +2152,8 @@ let eruptionCooldown = 0;
         player.armorMeshes = {
             helmet: new THREE.Mesh(new THREE.CylinderGeometry(0.65, 0.65, 1.05, 32), armorMat.clone()),
             chestplate: new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.1, 1.1), armorMat.clone()),
-            leggingsL: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16), armorMat.clone()),
-            leggingsR: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16), armorMat.clone()),
+            leggingsL: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16).translate(0, -1.1, 0), armorMat.clone()),
+            leggingsR: new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 2.2, 16).translate(0, -1.1, 0), armorMat.clone()),
             bootsL: new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), armorMat.clone()),
             bootsR: new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.5, 0.8), armorMat.clone())
         };
@@ -2197,10 +2235,37 @@ let eruptionCooldown = 0;
         // --- RADIUS OPTIMIZER (CULLING) ---
         if (player) {
             enemies.forEach(enemy => {
-                // CRITICAL FIX: If they are dead, force them to stay hidden and skip the distance check!
+                // CRITICAL FIX: If they are dead, handle respawn timers!
                 if (enemy.hp <= 0) {
-                    enemy.mesh.visible = false;
-                    enemy.active = false;
+                    if (enemy.type === "boss" && enemy.isRespawning) {
+                        enemy.respawnTimer -= delta; // Tick down the clock
+                        
+                        if (enemy.respawnTimer <= 0) {
+                            // TIMER FINISHED! RESPAWN THE BOSS!
+                            enemy.isRespawning = false;
+                            enemy.hp = enemy.maxHp;
+                            enemy.active = true;
+                            
+                            // Un-hide all the body parts
+                            enemy.mesh.children.forEach(child => child.visible = true);
+                            
+                            if (enemy.ui) {
+                                drawHealthBar(enemy.ui.ctx, enemy.name, enemy.hp, enemy.maxHp);
+                                enemy.ui.texture.needsUpdate = true;
+                            }
+                            console.log(`✨ ${enemy.name} has respawned!`);
+                        } else {
+                            // UPDATE THE FLOATING TEXT
+                            if (enemy.ui) {
+                                drawTimerBar(enemy.ui.ctx, enemy.respawnTimer);
+                                enemy.ui.texture.needsUpdate = true;
+                            }
+                        }
+                    } else if (enemy.type !== "boss") {
+                        // Keep normal mobs hidden while dead
+                        enemy.mesh.visible = false;
+                        enemy.active = false;
+                    }
                     return; 
                 }
 
@@ -2740,6 +2805,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
