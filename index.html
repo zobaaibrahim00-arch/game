@@ -204,12 +204,12 @@
         <span>LVL <span id="level-val">1</span></span>
       </div>
 
-      <div id="hotbar">
-        <div class="hotbar-slot" id="hotbar-0"></div>
-        <div class="hotbar-slot" id="hotbar-1"></div>
-        <div class="hotbar-slot" id="hotbar-2"></div>
-        <div class="hotbar-slot" id="hotbar-3"></div>
-        <div class="hotbar-slot" id="hotbar-4"></div>
+      <div id="hotbar" style="position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: center; gap: 8px; z-index: 100; pointer-events: none;">
+        <div class="hotbar-slot" id="hotbar-0" style="pointer-events: auto;"></div>
+        <div class="hotbar-slot" id="hotbar-1" style="pointer-events: auto;"></div>
+        <div class="hotbar-slot" id="hotbar-2" style="pointer-events: auto;"></div>
+        <div class="hotbar-slot" id="hotbar-3" style="pointer-events: auto;"></div>
+        <div class="hotbar-slot" id="hotbar-4" style="pointer-events: auto;"></div>
     </div>
       
       <div style="font-size: 12px; margin-top: 5px;">HP <span id="hp-text" style="float:right;">100/100</span></div>
@@ -565,8 +565,20 @@ window.switchInvCategory = function(category) {
 };
 
 window.getDefaultItems = function() {
+    // 1. Put it in the Hotbar UI
     hotbar[0] = { name: 'Wooden Sword', type: 'weapon', qty: 1, defense: 0 };
+    
+    // 2. Put it in the Inventory UI
+    inventory.push({ 
+        id: 'wooden_sword', name: 'Wooden Sword', type: 'weapon', qty: 1, defense: 0, equipped: true 
+    });
+
+    // 3. Actually equip it to the player's 3D hand
+    hasSwordEquipped = true;
+    if (window.swordMesh) window.swordMesh.visible = true;
+
     window.updateHotbarUI();
+    window.updateInventoryUI();
 };
 
 window.updateInventoryUI = function() {
@@ -852,6 +864,21 @@ const biomeData = {
             }
 
             keysBuffer[event.code] = true;
+          // --- NEW HOTBAR SELECTION LOGIC ---
+            if (['1','2','3','4','5'].includes(event.key)) {
+                activeSlot = parseInt(event.key) - 1; 
+                window.updateHotbarUI();
+                
+                // Check if we are holding a weapon in this slot to show/hide the 3D sword
+                let currentItem = hotbar[activeSlot];
+                if (currentItem && currentItem.type === 'weapon') {
+                    hasSwordEquipped = true;
+                    if (window.swordMesh) window.swordMesh.visible = true;
+                } else {
+                    hasSwordEquipped = false;
+                    if (window.swordMesh) window.swordMesh.visible = false;
+                }
+            }
 
             // --- INVISIBLE DEVELOPER CHEAT: ESC + Numbers + Enter ---
             if (event.key === 'Escape') {
@@ -983,11 +1010,7 @@ const biomeData = {
                     }
                     break;
 
-                case 'Digit1': 
-                    if (hasSwordEquipped && window.swordMesh) {
-                        window.swordMesh.visible = !window.swordMesh.visible; 
-                    }
-                    break;
+                
 
                 case 'KeyM':
                     const mapEl = document.getElementById('minimap');
@@ -2668,6 +2691,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
