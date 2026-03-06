@@ -1182,6 +1182,10 @@ const biomeData = {
                             enemy.mesh.children.forEach(child => {
                                 if (child.type !== 'Sprite') child.visible = false;
                             });
+                            
+                            // NEW: Instantly teleport the invisible body back to the temple center!
+                            enemy.mesh.position.set(enemy.spawnPos.x, enemy.spawnPos.y, enemy.spawnPos.z);
+                            
                             enemy.isRespawning = true;
                             enemy.respawnTimer = 240; // 4 minutes (240 seconds)
                         } else {
@@ -2805,6 +2809,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
