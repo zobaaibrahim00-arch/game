@@ -2692,6 +2692,7 @@ let eruptionCooldown = 0;
                     sfx.step();
                 }
                 lastStepTime = now;
+              
             }
         }
 
@@ -2715,7 +2716,7 @@ let eruptionCooldown = 0;
             camera.translateY(6);
         }
 
-      // --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
+     // --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
         eruptionCooldown -= 0.016; // timer to check 1 time per second
         if (window.volcanoData && eruptionCooldown <= 0) {
             eruptionCooldown = 1.0; 
@@ -2733,13 +2734,14 @@ let eruptionCooldown = 0;
                 if (distance < 1800) {
                     // Scales the shake: Max shake is 36.0 if you are right on top of it!
                     currentScreenShake = (1800 - distance) / 50; 
+                    
+                    // FIXED: White-out is now trapped INSIDE the distance check!
+                    whiteOutTimer = 2.0 + Math.random(); // Random duration between 2 and 3 seconds
+                    isWhitedOut = true;
+                    
+                    document.getElementById('white-out').style.transition = 'none';
+                    document.getElementById('white-out').style.opacity = '1';
                 }
-
-                whiteOutTimer = 2.0 + Math.random(); // Random duration between 2 and 3 seconds
-                isWhitedOut = true;
-                
-                document.getElementById('white-out').style.transition = 'none';
-                document.getElementById('white-out').style.opacity = '1';
             }
             // 2. Roll for NORMAL ERUPTION (Upgraded to 5% chance)
             else if (Math.random() <= 0.05) {
@@ -2788,7 +2790,7 @@ let eruptionCooldown = 0;
                 document.getElementById('white-out').style.transition = 'opacity 1.5s ease-out';
                 document.getElementById('white-out').style.opacity = '0';
             }
-        }      
+        }
 
         // --- MULTIPLAYER MOVEMENT SYNC ---
         if (window.socket && player) {
@@ -2940,4 +2942,5 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
