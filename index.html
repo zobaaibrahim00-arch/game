@@ -220,6 +220,8 @@
         <span>LVL <span id="level-val">1</span></span>
       </div>
 
+      <div id="notification-container" style="position: absolute; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; pointer-events: none; align-items: flex-end;"></div>
+
       <div id="hotbar" style="position: absolute; bottom: 20px; left: 0; width: 100vw; display: flex; justify-content: center; gap: 8px; z-index: 9999; pointer-events: none; margin: 0; padding: 0; transform: none !important;">
     <div class="hotbar-slot" id="hotbar-0" style="pointer-events: auto; width: 60px; height: 60px; background: rgba(0, 0, 0, 0.7); border: 2px solid #555; border-radius: 5px; color: white; position: relative; cursor: pointer; transition: all 0.1s; box-sizing: border-box;"></div>
     <div class="hotbar-slot" id="hotbar-1" style="pointer-events: auto; width: 60px; height: 60px; background: rgba(0, 0, 0, 0.7); border: 2px solid #555; border-radius: 5px; color: white; position: relative; cursor: pointer; transition: all 0.1s; box-sizing: border-box;"></div>
@@ -1305,9 +1307,12 @@ const biomeData = {
                             }
                         };
 
-                        // Helper function to push items safely
+                         // Helper function to push items safely
                         function grantItem(name, type, qty = 1, defense = 0, slot = "", color = 0xffffff) {
                             if (name === "Small Health Vial" || name === "Mana Shard") type = "consumable";
+
+                            // TRIGGER THE ON-SCREEN NOTIFICATION!
+                            window.showNotification(`+${qty} ${name}`, color);
 
                             if (type === 'consumable' || type === 'weapon') {
                                 let existingSlot = hotbar.find(i => i && i.name === name);
@@ -1327,7 +1332,7 @@ const biomeData = {
                             if (type === 'material') {
                                 let existing = inventory.find(i => i.name === name);
                                 if (existing) existing.qty += qty;
-                                else inventory.push({ id: name.toLowerCase().replace(/ /g, '_'), name: name, type: 'material', qty: qty });
+                                else inventory.push({ id: name.toLowerCase().replace(/ /g, '_'), name: name, type: 'material', qty: qty, color: color });
                             } else {
                                 if (!inventory.find(i => i.name === name)) {
                                     inventory.push({ 
@@ -1336,6 +1341,7 @@ const biomeData = {
                                     });
                                 }
                             }
+                            window.updateInventoryUI();
                         }
 
                         // --- INDEPENDENT SLOT ROLLING LOGIC ---
@@ -2032,14 +2038,48 @@ function generateEnvironment() {
         }
     }
       function onWindowResize() {
-
         camera.aspect = window.innerWidth / window.innerHeight;
-
         camera.updateProjectionMatrix();
-
         renderer.setSize(window.innerWidth, window.innerHeight);
-
       }
+
+      // --- LOOT NOTIFICATION SYSTEM ---
+window.showNotification = function(message, colorCode = 0xffffff) {
+    const container = document.getElementById('notification-container');
+    if (!container) return;
+
+    // Convert the 0xffffff number format to a CSS #ffffff string
+    let hexColor = typeof colorCode === 'number' ? '#' + colorCode.toString(16).padStart(6, '0') : colorCode;
+
+    const notif = document.createElement('div');
+    notif.innerText = message;
+    notif.style.background = 'rgba(0, 0, 0, 0.7)';
+    notif.style.color = hexColor;
+    notif.style.padding = '8px 15px';
+    notif.style.borderLeft = `4px solid ${hexColor}`;
+    notif.style.borderRadius = '3px';
+    notif.style.fontFamily = 'Courier New, monospace';
+    notif.style.fontWeight = 'bold';
+    notif.style.fontSize = '16px';
+    notif.style.textShadow = '1px 1px 2px black';
+    notif.style.opacity = '1';
+    notif.style.transition = 'opacity 0.5s ease-out, transform 0.2s ease-out';
+    notif.style.transform = 'translateX(20px)'; // Start slightly right
+
+    container.appendChild(notif);
+
+    // Small delay to trigger the slide-in animation
+    setTimeout(() => {
+        notif.style.transform = 'translateX(0px)';
+    }, 10);
+
+    // Fade out and remove after 3 seconds
+    setTimeout(() => {
+        notif.style.opacity = '0';
+        setTimeout(() => notif.remove(), 500); // Wait for fade to finish before deleting
+    }, 3000);
+};
+      
       function updateUI() {
         // Update Text
         document.getElementById('level-val').innerText = level;
@@ -2809,6 +2849,7 @@ let eruptionCooldown = 0;
   </body>
 
 </html>
+
 
 
 
