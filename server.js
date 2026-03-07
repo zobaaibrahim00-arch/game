@@ -1,144 +1,198 @@
-const express = require('express');
+const path = require("path");
+const express = require("express");
+const http = require("http");
+const { Server } = require("socket.io");
+
 const app = express();
-const http = require('http').createServer(app);
-const io = require('socket.io')(http, {
-    cors: { origin: "*" }
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: { origin: "*" },
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
+const PORT = 3000;
+const MAX_PLAYERS_PER_ROOM = 10;
+const gameRooms = {};
+const allPlayers = {};
+
+const spawnPoints = [
+  { x: 600, z: 600 },
+  { x: -600, z: 600 },
+  { x: 600, z: -600 },
+  { x: -600, z: -600 },
+];
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// Start with NO rooms! They will be created dynamically.
-const gameRooms = {}; 
-const allPlayers = {}; 
+function emitRoomList() {
+  io.emit("server-list", gameRooms);
+}
+
+function getPlayersInRoom(roomName) {
+  const playersInRoom = {};
+
+  for (const [id, player] of Object.entries(allPlayers)) {
+    if (player.room === roomName) {
+      playersInRoom[id] = player;
+    }
+  }
+
+  return playersInRoom;
+}
+
+function pickSpawnPoint() {
+  return spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
+}
+
+function normalizeText(value, fallback, maxLength) {
+  const trimmed = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+
+  return trimmed || fallback;
+}
+
+function leaveCurrentRoom(socket) {
+  const oldRoomName = socket.currentRoom;
+  if (!oldRoomName) {
+    return;
+  }
+
+  const oldRoom = gameRooms[oldRoomName];
+  const hadPlayer = Boolean(allPlayers[socket.id]);
+
+  socket.leave(oldRoomName);
+
+  if (hadPlayer) {
+    delete allPlayers[socket.id];
+    io.to(oldRoomName).emit("player-left", socket.id);
+  }
+
+  if (oldRoom) {
+    oldRoom.players = Math.max(0, oldRoom.players - 1);
+    if (oldRoom.players === 0) {
+      delete gameRooms[oldRoomName];
+    }
+  }
+
+  socket.currentRoom = null;
+  emitRoomList();
+}
 
 console.log("Server is starting...");
 
-io.on('connection', (socket) => {
-    console.log("A player connected! Their ID is: " + socket.id);
-    
-    // Send the current list of rooms to the new player
-    socket.emit('server-list', gameRooms);
+io.on("connection", (socket) => {
+  console.log(`A player connected. Their ID is ${socket.id}`);
+  socket.emit("server-list", gameRooms);
 
-    // NEW: Listen for a player creating a new room
-    socket.on('create-room', (roomName) => {
-        if (!gameRooms[roomName]) {
-            // Create the room with a max of 10 players (you can change this number)
-            gameRooms[roomName] = { players: 0, max: 10 }; 
-            io.emit('server-list', gameRooms); // Update everyone's lobby screen
-        }
+  socket.on("create-room", (roomName) => {
+    const normalizedRoomName = normalizeText(roomName, "", 30);
+    if (!normalizedRoomName) {
+      return;
+    }
+
+    if (!gameRooms[normalizedRoomName]) {
+      gameRooms[normalizedRoomName] = {
+        players: 0,
+        max: MAX_PLAYERS_PER_ROOM,
+      };
+      emitRoomList();
+    }
+  });
+
+  socket.on("join-room", (data = {}) => {
+    const roomName = normalizeText(data.room, "", 30);
+    const playerName = normalizeText(data.username, "Guest", 20);
+
+    if (!roomName) {
+      socket.emit("room-full");
+      return;
+    }
+
+    if (!gameRooms[roomName]) {
+      gameRooms[roomName] = {
+        players: 0,
+        max: MAX_PLAYERS_PER_ROOM,
+      };
+    }
+
+    if (socket.currentRoom === roomName && allPlayers[socket.id]) {
+      socket.emit("joined-success", roomName);
+      socket.emit("current-players", getPlayersInRoom(roomName));
+      emitRoomList();
+      return;
+    }
+
+    if (socket.currentRoom && socket.currentRoom !== roomName) {
+      leaveCurrentRoom(socket);
+    }
+
+    const room = gameRooms[roomName];
+    if (!room || room.players >= room.max) {
+      socket.emit("room-full");
+      return;
+    }
+
+    room.players += 1;
+    socket.currentRoom = roomName;
+    socket.join(roomName);
+
+    const spawn = pickSpawnPoint();
+    allPlayers[socket.id] = {
+      id: socket.id,
+      username: playerName,
+      room: roomName,
+      x: spawn.x,
+      y: 100,
+      z: spawn.z,
+      ry: 0,
+    };
+
+    socket.emit("joined-success", roomName);
+    socket.emit("current-players", getPlayersInRoom(roomName));
+    socket.to(roomName).emit("new-player-joined", allPlayers[socket.id]);
+    emitRoomList();
+  });
+
+  socket.on("player-moved", (movementData = {}) => {
+    const player = allPlayers[socket.id];
+    if (!player || !socket.currentRoom) {
+      return;
+    }
+
+    player.x = Number(movementData.x) || 0;
+    player.y = Number(movementData.y) || 0;
+    player.z = Number(movementData.z) || 0;
+    player.ry = Number(movementData.ry) || 0;
+
+    socket.to(socket.currentRoom).emit("player-moved", player);
+  });
+
+  socket.on("chat-message", (msg) => {
+    const player = allPlayers[socket.id];
+    if (!player || !socket.currentRoom) {
+      return;
+    }
+
+    const text = normalizeText(msg, "", 200);
+    if (!text) {
+      return;
+    }
+
+    io.to(socket.currentRoom).emit("chat-message", {
+      name: player.username,
+      text,
     });
+  });
 
-    // Update the join-room listener to handle SWITCHING servers
-    socket.on('join-room', (data) => {
-        let roomName = data.room;
-        let playerName = data.username || "Guest"; 
-        let room = gameRooms[roomName];
-
-        // --- NEW: If they are already in a room, make them leave it first! ---
-        if (socket.currentRoom && socket.currentRoom !== roomName) {
-            let oldRoom = gameRooms[socket.currentRoom];
-            if (oldRoom) {
-                oldRoom.players--;
-                // Clean up empty rooms
-                if (oldRoom.players <= 0) delete gameRooms[socket.currentRoom];
-                
-                io.emit('server-list', gameRooms); // Update everyone's menus
-                socket.leave(socket.currentRoom); // Actually leave the websocket room
-                io.to(socket.currentRoom).emit('player-left', socket.id); // Tell old room to delete your avatar
-            }
-        }
-
-        if (room && room.players < room.max) {
-            room.players++; 
-            socket.currentRoom = roomName; 
-            
-            socket.join(roomName); 
-            socket.emit('joined-success', roomName); 
-            io.emit('server-list', gameRooms); 
-
-        // --- NEW: Scaled Spawn Points for a 20,000-Unit Map ---
-            // A coordinate of 1200 on X and Z puts the player roughly 1700 units 
-            // away from the center boss, safely inside the 2000-radius Forest.
-            const spawnPoints = [
-                { x: 600, z: 600 },   // Deep North-East Forest
-                { x: -600, z: 600 },  // Deep North-West Forest
-                { x: 600, z: -600 },  // Deep South-East Forest
-                { x: -600, z: -600 }  // Deep South-West Forest
-            ];
-            
-            // Pick one of the 4 locations randomly
-            const randomSpawn = spawnPoints[Math.floor(Math.random() * spawnPoints.length)];
-
-            allPlayers[socket.id] = {
-                id: socket.id,
-                username: playerName, 
-                room: roomName,
-                x: randomSpawn.x, 
-                y: 100, // Dropping from 100 just to be safe with the new massive scale!
-                z: randomSpawn.z
-            };
-
-            const playersInThisRoom = {};
-            for (let id in allPlayers) {
-                if (allPlayers[id].room === roomName) {
-                    playersInThisRoom[id] = allPlayers[id];
-                }
-            }
-
-            socket.emit('current-players', playersInThisRoom);
-            socket.to(roomName).emit('new-player-joined', allPlayers[socket.id]);
-        } else {
-            socket.emit('room-full');
-        }
-    });
-
-    socket.on('player-moved', (movementData) => {
-        if (allPlayers[socket.id]) {
-            allPlayers[socket.id].x = movementData.x;
-            allPlayers[socket.id].y = movementData.y;
-            allPlayers[socket.id].z = movementData.z;
-            allPlayers[socket.id].ry = movementData.ry; 
-
-            socket.to(socket.currentRoom).emit('player-moved', allPlayers[socket.id]);
-        }
-    });
-
-   // Update the chat listener to use their saved username!
-    socket.on('chat-message', (msg) => {
-        if (socket.currentRoom && allPlayers[socket.id]) {
-            io.to(socket.currentRoom).emit('chat-message', { 
-                name: allPlayers[socket.id].username, // <--- Send their real name
-                text: msg 
-            });
-        }
-    });
-
-    socket.on('disconnect', () => {
-        console.log("A player left! ID: " + socket.id);
-        if (socket.currentRoom && gameRooms[socket.currentRoom]) {
-            gameRooms[socket.currentRoom].players--;
-            
-            // NEW: If the room is empty, delete it so the lobby stays clean!
-            if (gameRooms[socket.currentRoom].players <= 0) {
-                delete gameRooms[socket.currentRoom];
-            }
-            
-            io.emit('server-list', gameRooms); 
-            delete allPlayers[socket.id];
-            io.to(socket.currentRoom).emit('player-left', socket.id);
-        }
-    });
+  socket.on("disconnect", () => {
+    console.log(`A player left. ID ${socket.id}`);
+    leaveCurrentRoom(socket);
+  });
 });
 
-http.listen(3000, () => {
-    console.log("Multiplayer server is awake and listening!");
+server.listen(PORT, () => {
+  console.log(`Multiplayer server is awake and listening on http://localhost:${PORT}`);
 });
-
-
-
-
-
-
-
