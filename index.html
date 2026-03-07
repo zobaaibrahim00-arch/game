@@ -4,6 +4,10 @@
 
   <head>
 
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multiplayer Game</title>
+
 <style>
       body { margin: 0; overflow: hidden; font-family: 'Courier New', sans-serif; cursor: crosshair; }
 
@@ -177,6 +181,7 @@
     </script>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   </head>
+  <body>
 <div id="lobby-menu" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 2000;">
         <h1 style="color: white; font-family: sans-serif;">Multiplayer Lobby</h1>
   <div style="margin-bottom: 20px;">
@@ -193,7 +198,6 @@
         <div id="server-text" style="display: flex; flex-direction: column; gap: 10px;"></div>
     </div>
 
-  <body>
     <button id="server-browser-btn" style="position: absolute; top: 20px; left: 100px; z-index: 1500; padding: 10px 15px; background: rgba(0,0,0,0.5); color: white; border: 1px solid rgba(255,255,255,0.3); cursor: pointer; border-radius: 5px; font-family: 'Courier New', sans-serif; font-weight: bold;">🌐 Servers</button>
 
     <div id="server-browser-menu" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 400px; background: rgba(0, 10, 30, 0.95); border: 2px solid #00aaff; box-shadow: 0 0 15px #00aaff; padding: 20px; border-radius: 10px; color: white; z-index: 2500; display: none; flex-direction: column; align-items: center; font-family: sans-serif;">
@@ -213,6 +217,15 @@
         </div>
     </div>
 <div id="white-out" style="position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background: white; opacity: 0; pointer-events: none; z-index: 9999;"></div>
+
+    <div id="death-screen" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 12px; background: rgba(20, 0, 0, 0.92); border: 2px solid #ff4d4d; box-shadow: 0 0 20px rgba(255, 77, 77, 0.45); padding: 18px 20px; border-radius: 10px; color: white; z-index: 3000;">
+      <div style="font-size: 22px; font-weight: bold; letter-spacing: 1px;">You Died</div>
+      <div style="font-size: 13px; color: #ffb3b3; text-align: center;">Choose where to respawn.</div>
+      <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: center;">
+        <button id="respawn-nearby-btn" style="padding: 10px 16px; font-size: 14px; font-weight: bold; cursor: pointer; background: #ff8a00; color: white; border: none; border-radius: 6px;">Spawn Nearby</button>
+        <button id="respawn-regular-btn" style="padding: 10px 16px; font-size: 14px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 6px;">Spawn Regular</button>
+      </div>
+    </div>
 
     <div id="system-ui">
       <div class="stat-row">
@@ -300,6 +313,68 @@
     // 2. THIS IS THE MISSING PIECE! The list to hold the 3D bodies
     const otherPlayers = {}; 
 
+    function getEnteredUsername() {
+        return document.getElementById('player-username').value.trim() || 'Guest';
+    }
+
+    function createRoomButton(label, onClick, backgroundColor, fontSize, extraStyles = {}) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.textContent = label;
+        button.addEventListener('click', onClick);
+
+        Object.assign(button.style, {
+            padding: '10px 15px',
+            fontSize,
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            background: backgroundColor,
+            color: 'white',
+            border: 'none',
+            borderRadius: '5px',
+            ...extraStyles,
+        });
+
+        return button;
+    }
+
+    function renderRoomList(container, rooms, makeButton, emptyMessage) {
+        if (!container) {
+            return;
+        }
+
+        container.replaceChildren();
+
+        const roomEntries = Object.entries(rooms);
+        if (roomEntries.length === 0 && emptyMessage) {
+            const emptyState = document.createElement('p');
+            emptyState.textContent = emptyMessage;
+            emptyState.style.margin = '0';
+            emptyState.style.color = '#ccc';
+            container.appendChild(emptyState);
+            return;
+        }
+
+        for (const [roomName, roomData] of roomEntries) {
+            container.appendChild(makeButton(roomName, roomData));
+        }
+    }
+
+    function appendChatMessage(data) {
+        const msgEl = document.createElement('div');
+        const nameEl = document.createElement('span');
+
+        nameEl.style.color = '#00aaff';
+        nameEl.style.fontWeight = 'bold';
+        nameEl.textContent = `[${data.name || 'Guest'}]:`;
+
+        msgEl.appendChild(nameEl);
+        msgEl.appendChild(document.createTextNode(` ${data.text || ''}`));
+        chatMessages.appendChild(msgEl);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        resetChatTimer();
+    }
+
    function spawnOtherPlayer(playerData) {
         const otherPlayerGroup = new THREE.Group();
         otherPlayerGroup.rotation.order = 'YXZ'; 
@@ -334,23 +409,32 @@
     socket.on('server-list', (rooms) => {
         // 1. Update the Main Lobby Menu (When you first load the game)
         const textBox = document.getElementById('server-text');
-        if (textBox) {
-            textBox.innerHTML = ""; 
-            for (const roomName in rooms) {
-                const roomData = rooms[roomName];
-                textBox.innerHTML += `<button onclick="window.socket.emit('join-room', { room: '${roomName}', username: document.getElementById('player-username').value })" style="margin: 10px; padding: 15px; font-size: 20px; font-weight: bold; cursor: pointer; background: #00aaff; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
-            }
-        }
+        renderRoomList(
+            textBox,
+            rooms,
+            (roomName, roomData) => createRoomButton(
+                `Join ${roomName} (${roomData.players}/${roomData.max})`,
+                () => window.socket.emit('join-room', { room: roomName, username: getEnteredUsername() }),
+                '#00aaff',
+                '20px',
+                { margin: '10px' }
+            ),
+            'No active servers yet. Create one to start.'
+        );
 
         // 2. Update the NEW In-Game Server Browser
         const inGameBox = document.getElementById('in-game-server-list');
-        if (inGameBox) {
-            inGameBox.innerHTML = "";
-            for (const roomName in rooms) {
-                const roomData = rooms[roomName];
-                inGameBox.innerHTML += `<button onclick="window.switchServer('${roomName}')" style="padding: 10px; font-size: 16px; font-weight: bold; cursor: pointer; background: #28a745; color: white; border: none; border-radius: 5px;">Join ${roomName} (${roomData.players}/${roomData.max})</button>`;
-            }
-        }
+        renderRoomList(
+            inGameBox,
+            rooms,
+            (roomName, roomData) => createRoomButton(
+                `Join ${roomName} (${roomData.players}/${roomData.max})`,
+                () => window.switchServer(roomName),
+                '#28a745',
+                '16px'
+            ),
+            'No other active servers.'
+        );
     });
 
     // --- NEW: The logic to actually switch servers mid-game ---
@@ -367,11 +451,7 @@
         }
 
         // Grab your username and send the request to join the new room!
-        const myUsername = document.getElementById('player-username').value || "Guest";
-        window.socket.emit('join-room', { room: roomName, username: myUsername });
-        
-        // UNLOCK THE GAME: Enemies can now hurt you!
-        window.gameStarted = true;
+        window.socket.emit('join-room', { room: roomName, username: getEnteredUsername() });
     };
 
     // Open/Close the In-Game Menu Buttons
@@ -383,36 +463,38 @@
     });
 
      window.createServer = function() {
-        const roomName = document.getElementById('new-room-name').value;
-        const myUsername = document.getElementById('player-username').value; // Get the name
+        const roomName = document.getElementById('new-room-name').value.trim();
+        const myUsername = getEnteredUsername();
         
-        if (roomName.trim() !== "") {
+        if (roomName !== "") {
             window.socket.emit('create-room', roomName);
             // Send both the room AND the username as an object
             window.socket.emit('join-room', { room: roomName, username: myUsername }); 
-            
-            // UNLOCK THE GAME: Enemies can now hurt you!
-            window.gameStarted = true;
-            
         } else {
             alert("Please enter a valid server name!");
         }
     };
 
     socket.on('joined-success', (roomName) => {
+        hasJoinedRoom = true;
+        isPlayerDead = false;
+        currentHp = maxHp;
+        currentMana = maxMana;
+        spawnProtectionUntil = performance.now() + 3000;
+        hideDeathScreen();
+        updateUI();
         document.getElementById('lobby-menu').style.display = 'none';
-        
-        // UNLOCK THE GAME: Enemies can now hurt you! (Added here just to be safe!)
-        window.gameStarted = true;
     });
-    
       // --- ROBLOX-STYLE CHAT LOGIC ---
     const chatToggleBtn = document.getElementById('chat-toggle-btn');
     const chatContainer = document.getElementById('chat-container');
     const chatMessages = document.getElementById('chat-messages');
     const chatInput = document.getElementById('chat-input');
     const chatSendBtn = document.getElementById('chat-send-btn');
-    
+    const deathScreen = document.getElementById('death-screen');
+    const respawnNearbyBtn = document.getElementById('respawn-nearby-btn');
+    const respawnRegularBtn = document.getElementById('respawn-regular-btn');
+     
     let chatFadeTimer;
 
     // This resets the 5-second countdown to hide the chat
@@ -465,14 +547,7 @@
 
     if (window.socket) {
         window.socket.on('chat-message', (data) => {
-            const msgEl = document.createElement('div');
-            
-            // Now we use the actual custom name!
-            msgEl.innerHTML = `<span style="color: #00aaff; font-weight: bold;">[${data.name}]:</span> ${data.text}`;
-            chatMessages.appendChild(msgEl);
-            
-            chatMessages.scrollTop = chatMessages.scrollHeight; 
-            resetChatTimer();
+            appendChatMessage(data);
         });
     }
 
@@ -518,8 +593,21 @@ document.addEventListener('keydown', (event) => {
       let playerAura;
       const particles = [];
       let prevTime = performance.now();
+      let lastNetworkSync = 0;
+      let hasJoinedRoom = false;
+      let isPlayerDead = false;
+      let spawnProtectionUntil = 0;
       const worldMeshes = []; // List of things we can stand on
+      const animatedGrassMaterials = [];
       const raycaster = new THREE.Raycaster(); // Collision detector
+      const worldUp = new THREE.Vector3(0, 1, 0);
+      const lastDeathPosition = new THREE.Vector3(0, 10, 0);
+      const regularRespawnPoints = [
+          { x: 600, z: 600 },
+          { x: -600, z: 600 },
+          { x: 600, z: -600 },
+          { x: -600, z: -600 }
+      ];
       // Camera Rotation Variables
       let yaw = 0;
       let pitch = 0;
@@ -529,13 +617,19 @@ document.addEventListener('keydown', (event) => {
       // RPG Stats
       let level = 1;
       let currentHp = 100;
-      window.gameStarted = false; // Prevents taking damage on the main menu
       let maxHp = 100;
       let currentMana = 100;
       let maxMana = 100;
       let currentXp = 0;
       let maxXp = 80;
       const statusElement = document.getElementById('status');
+
+      function setShiftLockState(enabled) {
+          isShiftLocked = enabled;
+          statusElement.innerText = enabled ? 'Shift Lock: ON' : 'Shift Lock: OFF';
+          statusElement.classList.toggle('active-status', enabled);
+      }
+
       let isSprinting = false;
 // --- RPG, INVENTORY & STAT VARIABLES ---
       let statPoints = 0;
@@ -895,7 +989,7 @@ const biomeData = {
 
         // 6. Mouse Look Controls (Only active when Shift Lock is ON)
         document.addEventListener('mousemove', (e) => {
-          if (isShiftLocked || document.pointerLockElement === document.body) {
+          if (document.pointerLockElement === document.body) {
             const deltaX = e.movementX || 0;
             const deltaY = e.movementY || 0;
 
@@ -908,6 +1002,12 @@ const biomeData = {
           }
         });
 
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement !== document.body && isShiftLocked) {
+                setShiftLockState(false);
+            }
+        });
+
 
 
       // 7. Keyboard Controls
@@ -917,12 +1017,7 @@ const biomeData = {
         const onKeyDown = (event) => {
             // --- NEW: If the player is typing in an input box, ignore the game controls! ---
             if (document.activeElement.tagName === 'INPUT') return;
-
-          // Switch hotbar slots with 1-5 keys
-            if (['1','2','3','4','5'].includes(event.key)) {
-                activeSlot = parseInt(event.key) - 1; 
-                window.updateHotbarUI();
-            }
+            if (isPlayerDead) return;
 
             keysBuffer[event.code] = true;
           // --- NEW HOTBAR SELECTION LOGIC ---
@@ -985,18 +1080,22 @@ const biomeData = {
 
             // Toggle Shift Lock with Z
             if (event.code === 'KeyZ') {
-                if (document.pointerLockElement !== document.body) {
-                    document.body.requestPointerLock();
-                }
-                isShiftLocked = !isShiftLocked;
-                if (isShiftLocked) {
-                    statusElement.innerText = "Shift Lock: ON";
-                    statusElement.classList.add('active-status');
+                if (!isShiftLocked) {
+                    setShiftLockState(true);
+                    if (document.pointerLockElement !== document.body) {
+                        document.body.requestPointerLock();
+                    }
                 } else {
-                    statusElement.innerText = "Shift Lock: OFF";
-                    statusElement.classList.remove('active-status');
+                    setShiftLockState(false);
+                    if (document.pointerLockElement === document.body && document.exitPointerLock) {
+                        document.exitPointerLock();
+                    }
                 }
                 return;
+            }
+
+            if (event.code === 'Escape' && document.pointerLockElement === document.body && document.exitPointerLock) {
+                document.exitPointerLock();
             }
 
             // Movement & Actions
@@ -1028,9 +1127,7 @@ const biomeData = {
                         isFlying = !isFlying; 
                         if (isFlying) {
                             levitateEffect = 0.4; 
-                            isShiftLocked = true;
-                            document.getElementById('status').innerText = "Shift Lock: ON";
-                            document.getElementById('status').classList.add('active-status');
+                            setShiftLockState(true);
                             if (document.pointerLockElement !== document.body) document.body.requestPointerLock();
                         } else {
                             isAdminFlying = false;
@@ -1122,6 +1219,7 @@ const biomeData = {
         document.addEventListener('mousedown', (event) => {
         // Make sure we are locked into the game before swinging
         if (document.pointerLockElement !== document.body) return; 
+        if (isPlayerDead) return;
           // --- HOTBAR USAGE LOGIC ---
         let currentItem = hotbar[activeSlot];
 
@@ -1461,8 +1559,6 @@ const biomeData = {
             }
         } 
     });
-    document.addEventListener('keyup', onKeyUp);
-
     // 8. Renderer Setup
     renderer = new THREE.WebGLRenderer({ antialias: true }); 
         renderer.setPixelRatio(window.devicePixelRatio);
@@ -1518,12 +1614,158 @@ function generateEnvironment() {
             return texture;
         }
 
+        function createForestGroundTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512;
+            canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            const baseGradient = ctx.createLinearGradient(0, 0, 512, 512);
+            baseGradient.addColorStop(0, '#1d3613');
+            baseGradient.addColorStop(0.45, '#2f5320');
+            baseGradient.addColorStop(1, '#243f17');
+            ctx.fillStyle = baseGradient;
+            ctx.fillRect(0, 0, 512, 512);
+
+            for (let i = 0; i < 2200; i++) {
+                const radius = 6 + Math.random() * 26;
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const tint = Math.floor(40 + Math.random() * 55);
+                ctx.fillStyle = `rgba(${20 + tint}, ${55 + tint}, ${18 + Math.floor(tint * 0.45)}, ${0.08 + Math.random() * 0.12})`;
+                ctx.beginPath();
+                ctx.ellipse(x, y, radius, radius * (0.45 + Math.random() * 0.7), Math.random() * Math.PI, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            for (let i = 0; i < 900; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const length = 8 + Math.random() * 20;
+                const angle = Math.random() * Math.PI * 2;
+                ctx.strokeStyle = `rgba(${45 + Math.floor(Math.random() * 30)}, ${70 + Math.floor(Math.random() * 50)}, ${25 + Math.floor(Math.random() * 20)}, ${0.18 + Math.random() * 0.18})`;
+                ctx.lineWidth = 1 + Math.random() * 1.5;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x + Math.cos(angle) * length, y + Math.sin(angle) * length);
+                ctx.stroke();
+            }
+
+            for (let i = 0; i < 160; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const radius = 14 + Math.random() * 34;
+                const dirt = ctx.createRadialGradient(x, y, 4, x, y, radius);
+                dirt.addColorStop(0, 'rgba(70, 55, 28, 0.22)');
+                dirt.addColorStop(1, 'rgba(70, 55, 28, 0)');
+                ctx.fillStyle = dirt;
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(8, 8);
+            return texture;
+        }
+
+        function createGrassBladeTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 256;
+            const ctx = canvas.getContext('2d');
+
+            function drawBlade(x, width, height, colorTop, colorBottom, lean) {
+                const baseY = 240;
+                const tipX = x + lean;
+                const tipY = baseY - height;
+                const gradient = ctx.createLinearGradient(x, baseY, tipX, tipY);
+                gradient.addColorStop(0, colorBottom);
+                gradient.addColorStop(1, colorTop);
+
+                ctx.fillStyle = gradient;
+                ctx.beginPath();
+                ctx.moveTo(x - width, baseY);
+                ctx.quadraticCurveTo(x - width * 0.25, baseY - height * 0.38, tipX, tipY);
+                ctx.quadraticCurveTo(x + width * 0.25, baseY - height * 0.38, x + width, baseY);
+                ctx.closePath();
+                ctx.fill();
+            }
+
+            drawBlade(34, 10, 150, '#9ddf6a', '#4f8b2d', -10);
+            drawBlade(64, 12, 190, '#b7f087', '#5f9f38', 6);
+            drawBlade(92, 10, 165, '#9bd468', '#4c832c', 12);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.ClampToEdgeWrapping;
+            texture.wrapT = THREE.ClampToEdgeWrapping;
+            return texture;
+        }
+
+        function createAnimatedGrassMaterial() {
+            const grassBladeTexture = createGrassBladeTexture();
+            const material = new THREE.MeshStandardMaterial({
+                color: 0x78b85d,
+                map: grassBladeTexture,
+                alphaMap: grassBladeTexture,
+                transparent: true,
+                alphaTest: 0.35,
+                side: THREE.DoubleSide,
+                roughness: 0.95,
+                metalness: 0,
+            });
+
+            material.customProgramCacheKey = () => 'forest-grass-sway-v1';
+            material.onBeforeCompile = (shader) => {
+                shader.uniforms.uTime = { value: 0 };
+                material.userData.shader = shader;
+
+                shader.vertexShader = `
+                    attribute float instancePhase;
+                    attribute float instanceBend;
+                    varying float vGrassShade;
+                ` + shader.vertexShader;
+
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <begin_vertex>',
+                    `
+                        vec3 transformed = vec3(position);
+                        float heightFactor = uv.y;
+                        float baseWave = sin(uTime * (1.2 + instanceBend * 0.2) + instancePhase + instanceMatrix[3].x * 0.015 + instanceMatrix[3].z * 0.018);
+                        float gustWave = sin(uTime * 0.45 + instanceMatrix[3].x * 0.005 - instanceMatrix[3].z * 0.006);
+                        float sway = (baseWave * (0.18 + instanceBend * 0.08) + gustWave * 0.12) * heightFactor;
+                        transformed.x += sway;
+                        transformed.z += sway * 0.35;
+                        transformed.y += sin(uTime * 1.8 + instancePhase) * 0.08 * heightFactor;
+                        vGrassShade = 0.58 + heightFactor * 0.42;
+                    `
+                );
+
+                shader.fragmentShader = `
+                    varying float vGrassShade;
+                ` + shader.fragmentShader;
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    '#include <map_fragment>',
+                    `
+                        #include <map_fragment>
+                        diffuseColor.rgb *= vGrassShade;
+                    `
+                );
+            };
+
+            animatedGrassMaterials.push(material);
+            return material;
+        }
+
         // --- THE OPTIMIZER OBJECT ---
         const dummy = new THREE.Object3D();
 
         // --- 1. BUILD MASSIVE CIRCULAR MAP (5x Scale) ---
         const forestGeo = new THREE.CircleGeometry(2000, 64);
-        const forestMat = new THREE.MeshStandardMaterial({ map: createTexture('#2d4c1e', '#1a2e11'), roughness: 0.9 }); 
+        const forestMat = new THREE.MeshStandardMaterial({ map: createForestGroundTexture(), roughness: 1.0 }); 
         const forest = new THREE.Mesh(forestGeo, forestMat);
         forest.rotation.x = -Math.PI / 2;
         scene.add(forest);
@@ -1572,16 +1814,67 @@ function generateEnvironment() {
         createWedge('#150025', '#0a0011', Math.PI);              
         createWedge('#2a0f0f', '#1a0505', Math.PI * 1.5);
 
-        // --- 2. FOREST (Instanced Trees) ---
-        const woodMat = new THREE.MeshStandardMaterial({ map: createTexture('#4a3018', '#2a1a0c'), roughness: 1.0 });
-        const leafMat = new THREE.MeshStandardMaterial({ map: createTexture('#1e3f14', '#2d5c1e'), roughness: 0.8 });
+        // --- 2. FOREST (More Realistic Instanced Trees) ---
+        const woodMat = new THREE.MeshStandardMaterial({
+            map: createTexture('#5a3a1f', '#2e1c10'),
+            roughness: 1.0,
+            metalness: 0.02
+        });
+        const leafMat = new THREE.MeshStandardMaterial({
+            map: createTexture('#244a18', '#3b6b28'),
+            roughness: 0.92,
+            metalness: 0.0
+        });
         
         const treeCount = 2500;
-        const trunkGeo = new THREE.CylinderGeometry(2, 3, 1, 8); 
-        const leafGeo = new THREE.DodecahedronGeometry(1); 
+        const trunkParts = [];
+        const trunkCore = new THREE.CylinderGeometry(1.2, 2.5, 1, 10);
+        trunkParts.push(trunkCore);
+
+        const rootFlare = new THREE.CylinderGeometry(2.4, 3.4, 0.18, 10);
+        rootFlare.translate(0, -0.41, 0);
+        trunkParts.push(rootFlare);
+
+        const branchTemplate = new THREE.CylinderGeometry(0.16, 0.42, 0.75, 7);
+        const branchTransforms = [
+            { y: 0.14, ry: Math.PI / 6, rz: -0.95 },
+            { y: 0.22, ry: Math.PI * 0.76, rz: 0.88 },
+            { y: 0.31, ry: Math.PI * 1.42, rz: -0.68 }
+        ];
+
+        for (const branch of branchTransforms) {
+            const branchGeo = branchTemplate.clone();
+            branchGeo.rotateZ(branch.rz);
+            branchGeo.rotateY(branch.ry);
+            branchGeo.translate(0, branch.y, 0);
+            trunkParts.push(branchGeo);
+        }
+
+        const trunkGeo = BufferGeometryUtils.mergeGeometries(trunkParts, false);
+        trunkGeo.computeVertexNormals();
+
+        const canopyParts = [];
+        const canopyLobes = [
+            { radius: 0.95, x: 0, y: 1.0, z: 0 },
+            { radius: 0.72, x: -0.72, y: 0.92, z: 0.22 },
+            { radius: 0.68, x: 0.76, y: 0.88, z: -0.12 },
+            { radius: 0.62, x: -0.15, y: 1.38, z: 0.58 },
+            { radius: 0.58, x: 0.22, y: 1.5, z: -0.52 }
+        ];
+
+        for (const lobe of canopyLobes) {
+            const sphere = new THREE.SphereGeometry(lobe.radius, 7, 6);
+            sphere.translate(lobe.x, lobe.y, lobe.z);
+            canopyParts.push(sphere);
+        }
+
+        const canopyGeo = BufferGeometryUtils.mergeGeometries(canopyParts, false);
+        canopyGeo.computeVertexNormals();
         
         const iTrunks = new THREE.InstancedMesh(trunkGeo, woodMat, treeCount);
-        const iLeaves = new THREE.InstancedMesh(leafGeo, leafMat, treeCount);
+        const iLeaves = new THREE.InstancedMesh(canopyGeo, leafMat, treeCount);
+        const trunkColor = new THREE.Color();
+        const leafColor = new THREE.Color();
 
         let treeIndex = 0;
         for(let i=0; i<6000; i++) {
@@ -1592,27 +1885,109 @@ function generateEnvironment() {
             if (Math.sqrt(x*x + z*z) > 1900) continue; 
             if (isInsideTemple(x, z)) continue;
             
-            const h = 20 + Math.random() * 30;
-            const leafSize = 10 + Math.random() * 5;
+            const h = 22 + Math.random() * 34;
+            const trunkWidth = 0.85 + Math.random() * 0.65;
+            const canopyWidth = 9 + Math.random() * 6;
+            const canopyHeight = canopyWidth * (1.15 + Math.random() * 0.35);
+            const leanX = (Math.random() - 0.5) * 0.08;
+            const leanZ = (Math.random() - 0.5) * 0.08;
+            const yawRotation = Math.random() * Math.PI * 2;
+            const canopyOffsetX = leanZ * h * 5.5;
+            const canopyOffsetZ = -leanX * h * 5.5;
             
             dummy.position.set(x, h/2, z);
-            dummy.scale.set(1, h, 1);
-            dummy.rotation.set(0, 0, 0);
+            dummy.scale.set(trunkWidth, h, trunkWidth);
+            dummy.rotation.set(leanX, yawRotation, leanZ);
             dummy.updateMatrix();
             iTrunks.setMatrixAt(treeIndex, dummy.matrix);
 
-            dummy.position.set(x, h, z);
-            dummy.scale.set(leafSize, leafSize, leafSize);
+            trunkColor.setHSL(0.07 + Math.random() * 0.02, 0.42 + Math.random() * 0.12, 0.19 + Math.random() * 0.08);
+            iTrunks.setColorAt(treeIndex, trunkColor);
+
+            dummy.position.set(x + canopyOffsetX, h * 0.9, z + canopyOffsetZ);
+            dummy.scale.set(canopyWidth, canopyHeight, canopyWidth);
+            dummy.rotation.set(leanX * 0.4, yawRotation * 0.7, leanZ * 0.4);
             dummy.updateMatrix();
             iLeaves.setMatrixAt(treeIndex, dummy.matrix);
+
+            leafColor.setHSL(0.28 + Math.random() * 0.03, 0.4 + Math.random() * 0.2, 0.26 + Math.random() * 0.12);
+            iLeaves.setColorAt(treeIndex, leafColor);
 
             treeIndex++;
         }
         
         iTrunks.count = treeIndex;
         iLeaves.count = treeIndex;
+        iTrunks.instanceMatrix.needsUpdate = true;
+        iLeaves.instanceMatrix.needsUpdate = true;
+        if (iTrunks.instanceColor) iTrunks.instanceColor.needsUpdate = true;
+        if (iLeaves.instanceColor) iLeaves.instanceColor.needsUpdate = true;
+        iTrunks.computeBoundingSphere();
+        iLeaves.computeBoundingSphere();
         scene.add(iTrunks, iLeaves); 
         worldMeshes.push(iTrunks); 
+
+        // --- 2B. FOREST GRASS (Instanced Cross-Blades with Wind Sway) ---
+        const grassCount = 14000;
+        const grassMaterial = createAnimatedGrassMaterial();
+        const grassBladeA = new THREE.PlaneGeometry(1.8, 8, 1, 4);
+        grassBladeA.translate(0, 4, 0);
+        const grassBladeB = grassBladeA.clone();
+        grassBladeB.rotateY(Math.PI / 3);
+        const grassBladeC = grassBladeA.clone();
+        grassBladeC.rotateY(-Math.PI / 3);
+        const grassGeo = BufferGeometryUtils.mergeGeometries([grassBladeA, grassBladeB, grassBladeC], false);
+        grassGeo.computeVertexNormals();
+        const grassMesh = new THREE.InstancedMesh(grassGeo, grassMaterial, grassCount);
+        const grassPhase = new Float32Array(grassCount);
+        const grassBend = new Float32Array(grassCount);
+        const grassColor = new THREE.Color();
+
+        let grassIndex = 0;
+        for (let clump = 0; clump < 2200 && grassIndex < grassCount; clump++) {
+            const clumpRadius = Math.random() * 1850;
+            const clumpAngle = Math.random() * Math.PI * 2;
+            const clumpX = Math.cos(clumpAngle) * clumpRadius;
+            const clumpZ = Math.sin(clumpAngle) * clumpRadius;
+
+            if (Math.sqrt(clumpX * clumpX + clumpZ * clumpZ) > 1880) continue;
+            if (isInsideTemple(clumpX, clumpZ)) continue;
+
+            const bladesInClump = 4 + Math.floor(Math.random() * 5);
+            for (let blade = 0; blade < bladesInClump && grassIndex < grassCount; blade++) {
+                const spread = 4 + Math.random() * 14;
+                const theta = Math.random() * Math.PI * 2;
+                const x = clumpX + Math.cos(theta) * spread;
+                const z = clumpZ + Math.sin(theta) * spread;
+
+                if (Math.sqrt(x * x + z * z) > 1890) continue;
+                if (isInsideTemple(x, z)) continue;
+
+                const widthScale = 0.7 + Math.random() * 0.7;
+                const heightScale = 0.75 + Math.random() * 0.95;
+                dummy.position.set(x, 0.05, z);
+                dummy.rotation.set(0, Math.random() * Math.PI, 0);
+                dummy.scale.set(widthScale, heightScale, widthScale);
+                dummy.updateMatrix();
+                grassMesh.setMatrixAt(grassIndex, dummy.matrix);
+
+                grassPhase[grassIndex] = Math.random() * Math.PI * 2;
+                grassBend[grassIndex] = 0.6 + Math.random() * 0.8;
+                grassColor.setHSL(0.28 + Math.random() * 0.04, 0.48 + Math.random() * 0.18, 0.28 + Math.random() * 0.1);
+                grassMesh.setColorAt(grassIndex, grassColor);
+                grassIndex++;
+            }
+        }
+
+        grassGeo.setAttribute('instancePhase', new THREE.InstancedBufferAttribute(grassPhase, 1));
+        grassGeo.setAttribute('instanceBend', new THREE.InstancedBufferAttribute(grassBend, 1));
+        grassMesh.count = grassIndex;
+        grassMesh.instanceMatrix.needsUpdate = true;
+        if (grassMesh.instanceColor) {
+            grassMesh.instanceColor.needsUpdate = true;
+        }
+        grassMesh.computeBoundingSphere();
+        scene.add(grassMesh);
 
         // --- 3. VOLCANO (Instanced Volcanoes & Spilling Lava Rivers) ---
         const volcanoMat = new THREE.MeshStandardMaterial({ map: createTexture('#221111', '#110000'), roughness: 0.9 });
@@ -2089,65 +2464,12 @@ window.showNotification = function(message, colorCode = 0xffffff) {
         setTimeout(() => notif.remove(), 500); // Wait for fade to finish before deleting
     }, 3000);
 };
-
-      // --- DEATH AND RESPAWN SYSTEM ---
-window.isDead = false;
-
-window.handlePlayerDeath = function() {
-    window.isDead = true;
-    currentHp = 0; // Prevent negative HP visuals
-    
-    // Unlock the mouse so they can click the buttons!
-    if (document.pointerLockElement) {
-        document.exitPointerLock();
-    }
-
-    // Show the red death screen
-    const deathScreen = document.getElementById('death-screen');
-    if (deathScreen) {
-        deathScreen.style.display = 'flex';
-    }
-    
-    window.updateUI();
-};
-
-window.respawnPlayer = function(type) {
-    window.isDead = false;
-    currentHp = maxHp;
-    currentMana = maxMana;
-    
-    if (type === 'regular') {
-        // Send them exactly back to the center of the world
-        player.position.set(0, 10, 0);
-    } 
-    else if (type === 'nearby') {
-        // Teleport them about 150 units away so they aren't instantly hit again!
-        const angle = Math.random() * Math.PI * 2;
-        player.position.x += Math.cos(angle) * 150;
-        player.position.z += Math.sin(angle) * 150;
-        // Drop them from the sky a little bit so they cleanly hit the ground
-        player.position.y += 50; 
-    }
-    
-    velocityY = 0; // Reset falling speed
-    
-    // Hide the death screen
-    document.getElementById('death-screen').style.display = 'none';
-    window.updateUI();
-};
-
-// Hook up the HTML buttons to our new code
-document.getElementById('btn-respawn-regular').addEventListener('click', () => {
-    if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
-    window.respawnPlayer('regular');
-});
-
-document.getElementById('btn-respawn-nearby').addEventListener('click', () => {
-    if (typeof sfx !== 'undefined' && sfx.click) sfx.click();
-    window.respawnPlayer('nearby');
-});
       
       function updateUI() {
+        currentHp = Math.max(0, Math.min(currentHp, maxHp));
+        currentMana = Math.max(0, Math.min(currentMana, maxMana));
+        currentXp = Math.max(0, Math.min(currentXp, maxXp));
+
         // Update Text
         document.getElementById('level-val').innerText = level;
         document.getElementById('hp-text').innerText = Math.floor(currentHp) + "/" + maxHp;
@@ -2177,6 +2499,110 @@ document.getElementById('btn-respawn-nearby').addEventListener('click', () => {
             cursor.style.transform = `rotate(${angleDeg}deg)`;
         }
       }
+
+      function clearMovementState() {
+        moveForward = false;
+        moveBackward = false;
+        moveLeft = false;
+        moveRight = false;
+        lookUp = false;
+        lookDown = false;
+        lookLeft = false;
+        lookRight = false;
+        isBoosting = false;
+        dashTriggered = false;
+        velocityY = 0;
+      }
+
+      function hasSpawnProtection() {
+        return !hasJoinedRoom || performance.now() < spawnProtectionUntil;
+      }
+
+      function canPlayerTakeDamage() {
+        return hasJoinedRoom && !isPlayerDead && !hasSpawnProtection();
+      }
+
+      function showDeathScreen() {
+        deathScreen.style.display = 'flex';
+      }
+
+      function hideDeathScreen() {
+        deathScreen.style.display = 'none';
+      }
+
+      function pickRegularRespawnPoint() {
+        return regularRespawnPoints[Math.floor(Math.random() * regularRespawnPoints.length)];
+      }
+
+      function respawnPlayer(mode) {
+        if (!player) {
+            return;
+        }
+
+        let targetX;
+        let targetZ;
+
+        if (mode === 'nearby') {
+            const angle = Math.random() * Math.PI * 2;
+            const radius = 70 + Math.random() * 50;
+            targetX = lastDeathPosition.x + Math.cos(angle) * radius;
+            targetZ = lastDeathPosition.z + Math.sin(angle) * radius;
+        } else {
+            const spawnPoint = pickRegularRespawnPoint();
+            targetX = spawnPoint.x;
+            targetZ = spawnPoint.z;
+        }
+
+        clearMovementState();
+        isPlayerDead = false;
+        currentHp = maxHp;
+        currentMana = maxMana;
+        whiteOutTimer = 0;
+        isWhitedOut = false;
+        canJump = false;
+        lastNetworkSync = 0;
+        spawnProtectionUntil = performance.now() + 3000;
+
+        player.position.set(targetX, 100, targetZ);
+        if (camera) {
+            camera.position.set(targetX, 106, targetZ + 20);
+        }
+
+        const flash = document.getElementById('white-out');
+        if (flash) {
+            flash.style.opacity = '0';
+            flash.style.background = 'white';
+        }
+
+        hideDeathScreen();
+        updateUI();
+      }
+
+      function handlePlayerDeath() {
+        if (!player || isPlayerDead) {
+            return;
+        }
+
+        isPlayerDead = true;
+        lastDeathPosition.copy(player.position);
+        currentHp = 0;
+        clearMovementState();
+
+        if (document.pointerLockElement === document.body && document.exitPointerLock) {
+            document.exitPointerLock();
+        }
+
+        updateUI();
+        showDeathScreen();
+      }
+
+      respawnNearbyBtn.addEventListener('click', () => {
+        respawnPlayer('nearby');
+      });
+
+      respawnRegularBtn.addEventListener('click', () => {
+        respawnPlayer('regular');
+      });
 
 let hasLargeVolcano = false;
 let whiteOutTimer = 0;
@@ -2343,19 +2769,10 @@ let eruptionCooldown = 0;
         const delta = (time - prevTime) / 1000;
         prevTime = time;
 
-   // --- DEATH CHECK ---
-        if (currentHp <= 0 && !window.isDead) {
-            window.handlePlayerDeath();
-        }
-
-        // If you are dead, force you to stand still
-        if (window.isDead) {
-            moveForward = false;
-            moveBackward = false;
-            moveLeft = false;
-            moveRight = false;
-            isSprinting = false;
-            isFlying = false;
+        for (const material of animatedGrassMaterials) {
+            if (material.userData.shader) {
+                material.userData.shader.uniforms.uTime.value = time * 0.001;
+            }
         }
 
         // --- RADIUS OPTIMIZER (CULLING) ---
@@ -2645,7 +3062,7 @@ let eruptionCooldown = 0;
         direction.normalize();
 
         const right = new THREE.Vector3();
-        right.crossVectors(new THREE.Vector3(0,1,0), direction).normalize();
+        right.crossVectors(direction, worldUp).normalize();
 
         // Calculate dynamic speed based on flight mode
         let currentSpeed = baseSpeed;
@@ -2692,7 +3109,6 @@ let eruptionCooldown = 0;
                     sfx.step();
                 }
                 lastStepTime = now;
-              
             }
         }
 
@@ -2716,7 +3132,7 @@ let eruptionCooldown = 0;
             camera.translateY(6);
         }
 
-     // --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
+      // --- UPGRADED VOLCANO ERUPTIONS & SHAKE LOGIC ---
         eruptionCooldown -= 0.016; // timer to check 1 time per second
         if (window.volcanoData && eruptionCooldown <= 0) {
             eruptionCooldown = 1.0; 
@@ -2734,14 +3150,13 @@ let eruptionCooldown = 0;
                 if (distance < 1800) {
                     // Scales the shake: Max shake is 36.0 if you are right on top of it!
                     currentScreenShake = (1800 - distance) / 50; 
-                    
-                    // FIXED: White-out is now trapped INSIDE the distance check!
-                    whiteOutTimer = 2.0 + Math.random(); // Random duration between 2 and 3 seconds
-                    isWhitedOut = true;
-                    
-                    document.getElementById('white-out').style.transition = 'none';
-                    document.getElementById('white-out').style.opacity = '1';
                 }
+
+                whiteOutTimer = 2.0 + Math.random(); // Random duration between 2 and 3 seconds
+                isWhitedOut = true;
+                
+                document.getElementById('white-out').style.transition = 'none';
+                document.getElementById('white-out').style.opacity = '1';
             }
             // 2. Roll for NORMAL ERUPTION (Upgraded to 5% chance)
             else if (Math.random() <= 0.05) {
@@ -2790,16 +3205,20 @@ let eruptionCooldown = 0;
                 document.getElementById('white-out').style.transition = 'opacity 1.5s ease-out';
                 document.getElementById('white-out').style.opacity = '0';
             }
-        }
+        }      
 
         // --- MULTIPLAYER MOVEMENT SYNC ---
-        if (window.socket && player) {
-            window.socket.emit('player-moved', {
-                x: player.position.x,
-                y: player.position.y,
-                z: player.position.z,
-                ry: player.rotation.y
-            });
+        if (window.socket && player && hasJoinedRoom && !isPlayerDead) {
+            const now = performance.now();
+            if (now - lastNetworkSync >= 50) {
+                lastNetworkSync = now;
+                window.socket.emit('player-moved', {
+                    x: player.position.x,
+                    y: player.position.y,
+                    z: player.position.z,
+                    ry: player.rotation.y
+                });
+            }
         }
 
        // --- NEW: MOB AI LOGIC (AGRO, CHASE, ATTACK) ---
@@ -2828,7 +3247,7 @@ let eruptionCooldown = 0;
             }
 
             // 3. ATTACK LOGIC
-            if (dist <= enemy.attackRange) {
+            if (dist <= enemy.attackRange && canPlayerTakeDamage()) {
                 enemy.cooldown -= 1;
                 
                 if (enemy.cooldown <= 0) {
@@ -2841,10 +3260,12 @@ let eruptionCooldown = 0;
                     }, 200);
 
                     // DEAL DAMAGE TO PLAYER
-                    // Only take damage if the game has started AND the player isn't already dead!
-                    if (typeof currentHp !== 'undefined' && window.gameStarted && !window.isDead) {
+                    if (typeof currentHp !== 'undefined') {
                         currentHp -= enemy.damage;
                         if (typeof updateUI === 'function') updateUI();
+                        if (currentHp <= 0) {
+                            handlePlayerDeath();
+                        }
                     }
                     
                     // Visual feedback: flash a red hit marker (if you have one)
@@ -2900,10 +3321,17 @@ let eruptionCooldown = 0;
                 // --- NEW: Teleport OUR local player to the server's chosen spawn point! ---
                 // Wait for the server to give us our safe coordinates, then move us there.
                 if (typeof player !== 'undefined' && typeof camera !== 'undefined') {
+                    hasJoinedRoom = true;
+                    isPlayerDead = false;
+                    currentHp = maxHp;
+                    currentMana = maxMana;
+                    spawnProtectionUntil = performance.now() + 3000;
+                    hideDeathScreen();
                     player.position.set(players[id].x, players[id].y, players[id].z);
                     // Move the camera so you don't leave your view behind!
                     // Assuming your camera sits a little bit above the player's feet
                     camera.position.set(players[id].x, players[id].y + 2, players[id].z);
+                    updateUI();
                 }
             }
         }
@@ -2931,16 +3359,6 @@ let eruptionCooldown = 0;
     });
     </script>
 <div id="notification-container" style="position: fixed; top: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 10000; pointer-events: none; align-items: flex-end;"></div>
-    <div id="death-screen" style="display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(20, 0, 0, 0.85); z-index: 100000; flex-direction: column; justify-content: center; align-items: center; color: red; font-family: 'Courier New', monospace; text-align: center;">
-    <h1 style="font-size: 100px; text-shadow: 2px 2px 10px black; margin-bottom: 10px; margin-top: 0;">YOU DIED</h1>
-    <p style="color: white; font-size: 20px; margin-bottom: 50px;">Your health reached 0.</p>
-    <div style="display: flex; gap: 20px;">
-        <button id="btn-respawn-regular" style="padding: 15px 30px; font-size: 20px; cursor: pointer; background: #222; color: white; border: 2px solid #555; border-radius: 5px; transition: 0.2s;">Respawn Regular</button>
-        <button id="btn-respawn-nearby" style="padding: 15px 30px; font-size: 20px; cursor: pointer; background: #222; color: white; border: 2px solid #555; border-radius: 5px; transition: 0.2s;">Respawn Nearby</button>
-    </div>
-</div>
   </body>
 
 </html>
-
-
