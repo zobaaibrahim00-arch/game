@@ -1888,34 +1888,44 @@ function generateEnvironment() {
             if (Math.sqrt(x*x + z*z) > 1900) continue; 
             if (isInsideTemple(x, z)) continue;
             
-            const h = 22 + Math.random() * 34;
-            const trunkWidth = 0.85 + Math.random() * 0.65;
-            const canopyWidth = 9 + Math.random() * 6;
-            const canopyHeight = canopyWidth * (1.15 + Math.random() * 0.35);
-            const leanX = (Math.random() - 0.5) * 0.08;
-            const leanZ = (Math.random() - 0.5) * 0.08;
+            // 1. CRAZY HEIGHT VARIANCE (From tiny bushes to massive redwoods)
+            const h = 15 + Math.random() * 65; 
+            const trunkWidth = 0.5 + (h * 0.015) + Math.random() * 0.4;
+            
+            // Canopy scales naturally with the height of the tree
+            const canopyWidth = 8 + (h * 0.1) + Math.random() * 5; 
+            const canopyHeight = canopyWidth * (0.8 + Math.random() * 0.4);
+            
+            const leanX = (Math.random() - 0.5) * 0.12;
+            const leanZ = (Math.random() - 0.5) * 0.12;
             const yawRotation = Math.random() * Math.PI * 2;
-            const canopyOffsetX = leanZ * h * 5.5;
-            const canopyOffsetZ = -leanX * h * 5.5;
+            
+            // 2. FIXED MATH: The multiplier 5.5 was pushing leaves into space! 
+            // It just needs to be h * 0.5 to match the exact pivot point of the trunk.
+            const canopyOffsetX = Math.sin(leanZ) * (h * 0.5);
+            const canopyOffsetZ = -Math.sin(leanX) * (h * 0.5);
             
             dummy.position.set(x, h/2, z);
             dummy.scale.set(trunkWidth, h, trunkWidth);
             dummy.rotation.set(leanX, yawRotation, leanZ);
             dummy.updateMatrix();
             iTrunks.setMatrixAt(treeIndex, dummy.matrix);
-
+            
             trunkColor.setHSL(0.07 + Math.random() * 0.02, 0.42 + Math.random() * 0.12, 0.19 + Math.random() * 0.08);
             iTrunks.setColorAt(treeIndex, trunkColor);
-
-            dummy.position.set(x + canopyOffsetX, h * 0.9, z + canopyOffsetZ);
+            
+            // 3. GLUED TO THE TRUNK: Lowered the Y position so spheres don't float above the wood
+            dummy.position.set(x + canopyOffsetX, h - (canopyHeight * 0.8), z + canopyOffsetZ);
             dummy.scale.set(canopyWidth, canopyHeight, canopyWidth);
-            dummy.rotation.set(leanX * 0.4, yawRotation * 0.7, leanZ * 0.4);
+            
+            // Don't lean the canopy as much as the trunk so it looks naturally weighed down
+            dummy.rotation.set(leanX * 0.3, yawRotation * 0.7, leanZ * 0.3);
             dummy.updateMatrix();
             iLeaves.setMatrixAt(treeIndex, dummy.matrix);
-
+            
             leafColor.setHSL(0.28 + Math.random() * 0.03, 0.4 + Math.random() * 0.2, 0.26 + Math.random() * 0.12);
             iLeaves.setColorAt(treeIndex, leafColor);
-
+            
             treeIndex++;
         }
         
