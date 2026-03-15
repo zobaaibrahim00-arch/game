@@ -1107,10 +1107,10 @@ const biomeData = {
                 case 'KeyA': moveLeft = true; break;
                 case 'KeyS': moveBackward = true; break;
                 case 'KeyD': moveRight = true; break;
-                case 'ArrowUp': lookUp = true; break;
-                case 'ArrowDown': lookDown = true; break;
-                case 'ArrowLeft': lookLeft = true; break;
-                case 'ArrowRight': lookRight = true; break;
+                case 'ArrowUp': moveForward = true; break; // Walk forward
+                case 'ArrowDown': moveBackward = true; break; // Walk backward (character turns around!)
+                case 'ArrowLeft': lookLeft = true; break; // Turn camera left
+                case 'ArrowRight': lookRight = true; break; // Turn camera right
 
                 case 'ControlLeft': 
                 case 'ControlRight': 
@@ -1206,8 +1206,8 @@ const biomeData = {
                 case 'KeyA': moveLeft = false; break;
                 case 'KeyS': moveBackward = false; break;
                 case 'KeyD': moveRight = false; break;
-                case 'ArrowUp': lookUp = false; break;
-                case 'ArrowDown': lookDown = false; break;
+                case 'ArrowUp': moveForward = false; break;
+                case 'ArrowDown': moveBackward = false; break;
                 case 'ArrowLeft': lookLeft = false; break;
                 case 'ArrowRight': lookRight = false; break;
                 case 'KeyQ': 
@@ -3038,6 +3038,10 @@ let eruptionCooldown = 0;
 
       // --- 6. Move Player & WALL COLLISION ---
         
+        // NEW: Keyboard Camera Turning (Left/Right Arrows)
+        if (lookLeft) yaw += 2.5 * delta;
+        if (lookRight) yaw -= 2.5 * delta;
+
         // 1. Calculate which way the character SHOULD face based on WASD
         let targetYaw = yaw; // Default to wherever the camera is looking
 
