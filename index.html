@@ -1832,7 +1832,7 @@ function generateEnvironment() {
         createWedge('#150025', '#0a0011', Math.PI);              
         createWedge('#2a0f0f', '#1a0505', Math.PI * 1.5);
 
-        // --- 2. FOREST (More Realistic Instanced Trees) ---
+       // --- 2. FOREST (More Realistic Instanced Trees) ---
         const woodMat = new THREE.MeshStandardMaterial({
             map: createTexture('#5a3a1f', '#2e1c10'),
             roughness: 1.0,
@@ -1844,16 +1844,19 @@ function generateEnvironment() {
             metalness: 0.0
         });
         
-        const treeCount = 2500;
+        const treeCount = 4000; // Your new count!
         const trunkParts = [];
-        const trunkCore = new THREE.CylinderGeometry(1.2, 2.5, 1, 10);
+        
+        // OPTIMIZATION 1: 6-sided cylinders instead of 10-sided (Saves thousands of polygons)
+        const trunkCore = new THREE.CylinderGeometry(1.2, 2.5, 1, 6);
         trunkParts.push(trunkCore);
 
-        const rootFlare = new THREE.CylinderGeometry(2.4, 3.4, 0.18, 10);
+        const rootFlare = new THREE.CylinderGeometry(2.4, 3.4, 0.18, 6);
         rootFlare.translate(0, -0.41, 0);
         trunkParts.push(rootFlare);
 
-        const branchTemplate = new THREE.CylinderGeometry(0.16, 0.42, 0.75, 7);
+        // OPTIMIZATION 2: 4-sided branches instead of 7-sided
+        const branchTemplate = new THREE.CylinderGeometry(0.16, 0.42, 0.75, 4);
         const branchTransforms = [
             { y: 0.14, ry: Math.PI / 6, rz: -0.95 },
             { y: 0.22, ry: Math.PI * 0.76, rz: 0.88 },
@@ -1872,18 +1875,19 @@ function generateEnvironment() {
         trunkGeo.computeVertexNormals();
 
         const canopyParts = [];
+        
+        // OPTIMIZATION 3: 3 shapes instead of 5! 
         const canopyLobes = [
-            { radius: 0.95, x: 0, y: 1.0, z: 0 },
-            { radius: 0.72, x: -0.72, y: 0.92, z: 0.22 },
-            { radius: 0.68, x: 0.76, y: 0.88, z: -0.12 },
-            { radius: 0.62, x: -0.15, y: 1.38, z: 0.58 },
-            { radius: 0.58, x: 0.22, y: 1.5, z: -0.52 }
+            { radius: 1.1, x: 0, y: 1.0, z: 0 },
+            { radius: 0.8, x: -0.6, y: 0.9, z: 0.3 },
+            { radius: 0.8, x: 0.6, y: 0.9, z: -0.3 }
         ];
 
         for (const lobe of canopyLobes) {
-            const sphere = new THREE.SphereGeometry(lobe.radius, 7, 6);
-            sphere.translate(lobe.x, lobe.y, lobe.z);
-            canopyParts.push(sphere);
+            // OPTIMIZATION 4: Dodecahedron is incredibly low-poly but looks like a cool stylized leaf cluster
+            const leafCluster = new THREE.DodecahedronGeometry(lobe.radius);
+            leafCluster.translate(lobe.x, lobe.y, lobe.z);
+            canopyParts.push(leafCluster);
         }
 
         const canopyGeo = BufferGeometryUtils.mergeGeometries(canopyParts, false);
