@@ -1812,6 +1812,34 @@ function generateEnvironment() {
         scene.add(worldMap);
         worldMeshes.push(worldMap);
 
+  // --- TEMPLE SAFE ZONE CHECK ---
+        function isInsideTemple(x, z) {
+            const safeRadius = 150; 
+            for (const biomeName in biomeData) {
+                const center = biomeData[biomeName].center;
+                const dx = x - center.x;
+                const dz = z - center.z;
+                if (Math.sqrt(dx*dx + dz*dz) < safeRadius) {
+                    return true; 
+                }
+            }
+            return false; 
+        }
+
+        // --- SPAWN PROPS HELPER ---
+        function spawnProps(minR, maxR, startAngle, count, callback) {
+            for (let i = 0; i < count; i++) {
+                const radius = minR + Math.random() * (maxR - minR);
+                const angle = startAngle + Math.random() * (Math.PI / 2); 
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+                
+                if (isInsideTemple(x, z)) continue;
+                
+                callback(x, z);
+            }
+        }
+
        // --- 2. FOREST (More Realistic Instanced Trees) ---
         const woodMat = new THREE.MeshStandardMaterial({
             map: createTexture('#5a3a1f', '#2e1c10'),
