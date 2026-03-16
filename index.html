@@ -1163,10 +1163,21 @@ const biomeData = {
                     if (isAdminFlying) {
                         isBoosting = true;
                     } 
-                    // Dash if normal
-                    else if (dashCooldown <= 0 && currentMana >= 10) {
+                    // NEW: Air Dash (Spammable, Double Mana, Double Distance)
+                    else if (!canJump && currentMana >= 20) {
                         sfx.dash(); 
                         dashTriggered = true; 
+                        window.isAirDashing = true; // Tell the game it's an air dash
+                        currentMana -= 20; 
+                        
+                        // Secret game-feel trick: Give a tiny upward boost so you don't sink while spamming!
+                        velocityY = 15; 
+                    }
+                    // OLD: Ground Dash (Normal)
+                    else if (canJump && dashCooldown <= 0 && currentMana >= 10) {
+                        sfx.dash(); 
+                        dashTriggered = true; 
+                        window.isAirDashing = false; // Tell the game it's a ground dash
                         currentMana -= 10; 
                     }
                     break;
@@ -2903,14 +2914,25 @@ let eruptionCooldown = 0;
         }
 
         if (dashTriggered) {
-            baseSpeed = 600.0; 
-            dashCooldown = 1.5;
+            // Check which type of dash we are doing!
+            if (window.isAirDashing) {
+                baseSpeed = 1200.0; // DOUBLE distance!
+                dashCooldown = 0.1; // Basically zero, making it completely spammable!
+            } else {
+                baseSpeed = 600.0; // Normal distance
+                dashCooldown = 1.5; // Normal cooldown
+            }
+            
             dashTriggered = false;
 
             // Particles
             for(let i=0; i<10; i++) {
                 const pGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-                const pMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true });
+                
+                // NEW: Yellow for Air, White for Ground
+                const pColor = window.isAirDashing ? 0xFFFF00 : 0xFFFFFF; 
+                const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true });
+                
                 const p = new THREE.Mesh(pGeo, pMat);
                 p.position.copy(player.position);
                 p.position.y += 2; 
