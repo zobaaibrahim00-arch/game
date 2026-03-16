@@ -595,6 +595,10 @@ document.addEventListener('keydown', (event) => {
       let player;
       let playerAura;
       const particles = [];
+      // Create these ONCE to save massive amounts of memory
+    const sharedParticleGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+    const airDashMat = new THREE.MeshBasicMaterial({ color: 0xFFFF00, transparent: true });
+    const groundDashMat = new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true });
       let prevTime = performance.now();
       let lastNetworkSync = 0;
       let hasJoinedRoom = false;
@@ -1891,7 +1895,7 @@ function generateEnvironment() {
         const leafColor = new THREE.Color();
 
         let treeIndex = 0;
-        for(let i=0; i<6000; i++) {
+        for(let i=0; i4000; i++) {
             if (treeIndex >= treeCount) break;
             const x = (Math.random() - 0.5) * 3800; 
             const z = (Math.random() - 0.5) * 3800;
@@ -2913,7 +2917,7 @@ let eruptionCooldown = 0;
             if (currentMana <= 0) isFlying = false; // Fall if out of mana
         }
 
-        if (dashTriggered) {
+  if (dashTriggered) {
             // Check which type of dash we are doing!
             if (window.isAirDashing) {
                 baseSpeed = 1200.0; // DOUBLE distance!
@@ -2925,15 +2929,13 @@ let eruptionCooldown = 0;
             
             dashTriggered = false;
 
-            // Particles
+            // Particles (OPTIMIZED: No more memory leaks!)
             for(let i=0; i<10; i++) {
-                const pGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                // Instantly grab the shared colors instead of making new ones
+                const pMat = window.isAirDashing ? airDashMat : groundDashMat; 
                 
-                // NEW: Yellow for Air, White for Ground
-                const pColor = window.isAirDashing ? 0xFFFF00 : 0xFFFFFF; 
-                const pMat = new THREE.MeshBasicMaterial({ color: pColor, transparent: true });
-                
-                const p = new THREE.Mesh(pGeo, pMat);
+                // Instantly use the shared box instead of making a new one
+                const p = new THREE.Mesh(sharedParticleGeo, pMat);
                 p.position.copy(player.position);
                 p.position.y += 2; 
                 p.position.x += (Math.random() - 0.5) * 2; 
@@ -2959,12 +2961,12 @@ let eruptionCooldown = 0;
                 p.mesh.rotation.x += 0.1;
             }
             
+            // This is perfect: It successfully throws the particle in the trash when it dies
             if (p.life <= 0) {
                 scene.remove(p.mesh);
                 particles.splice(i, 1);
             }
         }
-
       // --- 3. BIOME ATMOSPHERE & GRAVITY ---
         const distFromCenter = Math.sqrt(player.position.x * player.position.x + player.position.z * player.position.z);
         const inDarknessBiome = (player.position.x < 0 && player.position.z > 0 && distFromCenter > 2000);
